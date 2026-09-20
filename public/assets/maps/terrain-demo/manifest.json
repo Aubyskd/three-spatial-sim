@@ -1,0 +1,65 @@
+{
+  "name": "terrain-demo",
+  "version": 2,
+  "units": "meters",
+  "defaultTerrain": "terrain-01",
+  "terrains": [
+    {
+      "id": "terrain-01",
+      "name": "Coastal Terrain",
+      "type": "glb",
+      "source": "source/terrain1.glb",
+      "samplingResolution": 64,
+      "semantic": "data/semantic-01.json",
+      "assets": "data/assets-01.json",
+      "scale": 600
+    },
+    {
+      "id": "terrain-02",
+      "name": "Valley Terrain",
+      "type": "glb",
+      "source": "source/terrain2.glb",
+      "samplingResolution": 64,
+      "semantic": "data/semantic-02.json",
+      "assets": "data/assets-02.json",
+      "scale": 10
+    },
+    {
+      "id": "terrain-03",
+      "name": "Extended Terrain",
+      "type": "glb",
+      "source": "source/terrain3.glb",
+      "samplingResolution": 32,
+      "semantic": "data/semantic-03.json",
+      "assets": "data/assets-03.json",
+      "scale": 1.44
+    },
+    {
+      "id": "terrain-04",
+      "name": "DEM Terrain",
+      "type": "glb",
+      "source": "source/terrain4.glb",
+      "samplingResolution": 64,
+      "scale": 0.06,
+      "upAxis": "z"
+    },
+    {
+      "id": "synthetic-gis-demo",
+      "name": "synthetic-gis-demo",
+      "type": "glb",
+      "source": "generated/synthetic-gis-demo/terrain.glb",
+      "data": "generated/synthetic-gis-demo/terrain.json",
+      "metadata": "generated/synthetic-gis-demo/metadata.json",
+      "samplingResolution": 128
+    },
+    {
+      "id": "ny-demo",
+      "name": "ny-demo",
+      "type": "glb",
+      "source": "generated/ny-demo/terrain.glb",
+      "data": "generated/ny-demo/terrain.json",
+      "metadata": "generated/ny-demo/metadata.json",
+      "samplingResolution": 128
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "name": "three-spatial-sim",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "test:terrain": "esbuild tests/terrain-regression.test.ts --bundle --platform=node --format=esm --outfile=dist/terrain-regression.test.mjs && node --test dist/terrain-regression.test.mjs",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.20.0",
+    "@recast-navigation/three": "^0.43.1",
+    "recast-navigation": "^0.43.1",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.180.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.5"
+  }
+}

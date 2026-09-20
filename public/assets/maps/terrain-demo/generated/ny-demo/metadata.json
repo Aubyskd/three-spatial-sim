@@ -1,0 +1,69 @@
+{
+  "terrainId": "ny-demo",
+  "source": {
+    "file": "output_AW3D30.tif",
+    "sourceCRS": "EPSG:4326",
+    "rasterWidth": 723,
+    "rasterHeight": 344,
+    "dtype": "int16",
+    "nodata": null
+  },
+  "projectedCRS": "EPSG:32618",
+  "units": "meters",
+  "localCoordinateConvention": {
+    "x": "east",
+    "y": "up",
+    "z": "south"
+  },
+  "localOrigin": {
+    "easting": 559376.0571176213,
+    "northing": 4649939.727837248,
+    "elevation": 174.7803497314453
+  },
+  "originMode": "center",
+  "verticalScale": 1.0,
+  "resampling": "bilinear",
+  "sourceBounds": {
+    "west": -74.38361111109643,
+    "south": 41.9513888888829,
+    "east": -74.18277777776306,
+    "north": 42.04694444443847
+  },
+  "projectedBounds": {
+    "west": 551010.4275639204,
+    "south": 4644567.983381557,
+    "east": 567741.6866713222,
+    "north": 4655311.472292937
+  },
+  "localBounds": {
+    "origin": {
+      "x": -8365.629553700914,
+      "y": 0.0,
+      "z": -5371.744455689564
+    },
+    "width": 16731.259107401827,
+    "depth": 10743.48891138006,
+    "minHeight": 0.0,
+    "maxHeight": 982.3140258789062
+  },
+  "grid": {
+    "rows": 83,
+    "cols": 128
+  },
+  "elevation": {
+    "min": 165.0,
+    "max": 1197.0
+  },
+  "noData": {
+    "sourceRatio": 0.0,
+    "resampledRatio": 0.03840361445783136,
+    "maskedRatio": 0.03840361445783136
+  },
+  "centerLongitudeLatitude": {
+    "longitude": -74.28319444442974,
+    "latitude": 41.999166666660685
+  },
+  "warnings": [
+    "MASKED_NODATA: 3.8% of grid samples remain outside valid support; nearest heights are used only for finite mesh/physics geometry."
+  ]
+}

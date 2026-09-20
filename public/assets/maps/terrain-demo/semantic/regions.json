@@ -1,0 +1,44 @@
+[
+  {
+    "id": "grass-west",
+    "type": "grass",
+    "walkable": true,
+    "movementCost": 1.5,
+    "shape": { "kind": "rectangle", "center": { "x": -20, "z": 0 }, "width": 20, "depth": 60 }
+  },
+  {
+    "id": "road-main",
+    "type": "road",
+    "walkable": true,
+    "movementCost": 1,
+    "shape": { "kind": "rectangle", "center": { "x": 8, "z": 0 }, "width": 36, "depth": 60 }
+  },
+  {
+    "id": "water-lake",
+    "type": "water",
+    "walkable": false,
+    "movementCost": 1000,
+    "shape": { "kind": "rectangle", "center": { "x": 4, "z": 1 }, "width": 14, "depth": 22 }
+  },
+  {
+    "id": "building-north",
+    "type": "obstacle",
+    "walkable": false,
+    "movementCost": 1000,
+    "shape": { "kind": "rectangle", "center": { "x": -7, "z": -9 }, "width": 10, "depth": 8 }
+  },
+  {
+    "id": "building-south",
+    "type": "obstacle",
+    "walkable": false,
+    "movementCost": 1000,
+    "shape": { "kind": "rectangle", "center": { "x": 16, "z": 13 }, "width": 11, "depth": 8 }
+  },
+  {
+    "id": "building-east",
+    "type": "obstacle",
+    "walkable": false,
+    "movementCost": 1000,
+    "shape": { "kind": "rectangle", "center": { "x": 18, "z": -15 }, "width": 8, "depth": 12 }
+  }
+]

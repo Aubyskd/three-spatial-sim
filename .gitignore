@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.vite/
+*.log
+*.tsbuildinfo
+.DS_Store
+.venv/
+__pycache__/
+.pytest_cache/
+tools/gis-converter/output/*
+!tools/gis-converter/output/.gitkeep
