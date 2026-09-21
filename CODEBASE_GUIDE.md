@@ -152,6 +152,21 @@ tools/gis-converter：inspect → convert → validate → --update-manifest
 
 `terrain.json` 的高度和 `sampleCoverage` 是运行时依据；`terrain.glb` 是同一网格的便携模型/验证输出，不会再作为第二套高度来源叠加渲染。`metadata.json` 保存 CRS 与 GIS↔局部坐标映射；当前浏览器导航和物理仍在局部米制坐标中工作。GIS 命令和参数请看 [中文实操](tools/GIS_GeoTIFF_地形转换与平台接入步骤.md)。
 
+### 4.7 OSM 建筑与道路链路
+
+```text
+GeoJSON → vector-inspect / vector-convert
+  → 读取 terrain metadata 的 projectedCRS 与 localOrigin
+  → 投影为局部 X=East、Z=South，并从 terrain.json 采样 Y
+  → processed/buildings.local.json + roads.local.json
+  → manifest descriptor.buildings / descriptor.roads
+  → MultiTerrainSimulation 并行读取和验证
+  → RoadLayer / BuildingLayer + SemanticMap + Rapier building colliders
+  → TerrainNavMeshManager / Pathfinder 阻挡建筑、优先道路语义
+```
+
+源 OSM 属性和 source feature ID 保留在结构化 JSON 中；没有烘焙进 terrain GLB。前端建筑用合并后的 `ExtrudeGeometry` 显示，洞作为 `Shape.holes`；道路根据宽度生成 ribbon mesh。语义索引使用空间桶避免每次查询遍历数千个要素，建筑碰撞采用固定刚体上的简化 AABB 以控制成本。完整验收数据见 [V0.5 交付说明](V05_OSM_BUILDINGS_ROADS.md)。
+
 ## 5. 目录和关键文件职责
 
 ### 根目录与静态资源
@@ -163,13 +178,14 @@ tools/gis-converter：inspect → convert → validate → --update-manifest
 | `vite.config.ts`、`tsconfig*.json` | 打包和 TypeScript 配置。 |
 | `README.md` | 当前中文使用手册：每个界面功能、操作流程、数据保存及排错。 |
 | `CODEBASE_GUIDE.md` | 本文件：模块职责、调用链、算法 API 和阅读顺序。 |
+| `V05_OSM_BUILDINGS_ROADS.md` | V0.5 的坐标、转换、运行时接入、目录与实际验收报告。 |
 | `tools/GIS_GeoTIFF_地形转换与平台接入步骤.md` | GeoTIFF 到平台地形包的中文操作实例。 |
-| `tools/gis-converter/` | Python GIS 转换 CLI、依赖、转换/验证模块和 pytest。 |
+| `tools/gis-converter/` | Python DEM 与 OSM/GeoJSON 转换 CLI、依赖、转换/验证模块和 pytest。 |
 | `tools/gis-converter/gis_converter/`、`tools/gis-converter/tests/`、`tools/gis-converter/input/`、`tools/gis-converter/output/` | 分别为转换实现、Python 测试、用户输入 GeoTIFF 和可选的本地工具输出；平台地形包通常输出到下述 `generated/`。 |
 | `tests/terrain-regression.test.ts` | TypeScript 地形、水体、禁区、导航与碰撞回归测试。 |
 | `public/assets/maps/terrain-demo/manifest.json` | 地形目录：ID、GLB 路径、采样分辨率、缩放、可选语义和资产文件。 |
 | `public/assets/maps/terrain-demo/source/` | 四个源 GLB 文件。 |
-| `public/assets/maps/terrain-demo/generated/` | GIS 转换产生的地形包；每包通常含 `terrain.json`、`terrain.glb`、`metadata.json`。 |
+| `public/assets/maps/terrain-demo/generated/` | GIS 转换产生的地形包；可含 `terrain.json`、`terrain.glb`、`metadata.json` 和 `processed/*.local.json`。 |
 | `public/assets/models/` | V0.1 普通场景对象的示例 GLB；不是当前多地形下拉框的来源。 |
 | `public/assets/maps/terrain-demo/data/` | 每张地形的可选语义/资产 JSON；当前示例文件为空数组。 |
 | `public/assets/maps/terrain-demo/semantic/`、`terrain/` | 旧版/示例静态资料及说明。 |
@@ -199,6 +215,16 @@ tools/gis-converter：inspect → convert → validate → --update-manifest
 | `TerrainEditor.ts` | Raise/Lower/Flatten 笔刷、光标和 revision 更新。 |
 | `TerrainVisualBuilder.ts` | 根据 TerrainData 创建/更新可视地形网格并处理释放。 |
 
+### `src/gis/`：结构化建筑与道路运行时
+
+| 文件 | 作用 |
+| --- | --- |
+| `VectorFeatureTypes.ts` | 校验建筑/道路集合，定义属性与几何类型，并转换为道路/障碍语义区域。 |
+| `TerrainHeightProvider.ts` | 与 Python 转换器一致的局部网格双线性高度采样。 |
+| `BuildingLayer.ts` | 将外环和洞转成 `Shape`/`ExtrudeGeometry`，合并渲染网格，并生成 footprint、碰撞盒和高度点调试层。 |
+| `RoadLayer.ts` | 根据中心线和真实宽度生成贴地 ribbon，附带宽度边界与采样点调试层。 |
+| `BuildingMaterial.ts`、`RoadMaterial.ts` | 低饱和马卡龙材质，集中管理图层外观。 |
+
 ### `src/render/`：只负责可视化
 
 | 文件 | 作用 |
@@ -213,11 +239,11 @@ tools/gis-converter：inspect → convert → validate → --update-manifest
 
 | 文件 | 作用 |
 | --- | --- |
-| `physics/TerrainPhysicsWorld.ts` | 当前多地形 Rapier World、heightfield、塔站固定碰撞体。 |
+| `physics/TerrainPhysicsWorld.ts` | 当前多地形 Rapier World、heightfield、塔站碰撞体及 OSM 建筑简化静态碰撞体。 |
 | `physics/CharacterController.ts` | Agent 角色碰撞/运动接口。 |
 | `physics/PhysicsWorld.ts`、`ColliderFactory.ts` | V0.1 地图和对象的物理实现。 |
 | `navigation/TerrainNavMeshManager.ts` | 当前地形导航采样、Recast 构建/查询及重建。 |
-| `navigation/Pathfinder.ts` | 优先 Recast，必要时走网格 A*；对候选路径每段做 Restrict 精确相交校验，A* 邻边也不能跨禁区。 |
+| `navigation/Pathfinder.ts` | 优先 Recast，必要时走网格 A*；候选路径与 A* 邻边都不能跨越 Restrict 或 OSM 建筑障碍。 |
 | `navigation/NavigationDebug.ts` | 将导航单元交给 DebugRenderer 显示。 |
 | `navigation/NavMeshManager.ts` | V0.1 单地图导航实现。 |
 | `agent/Agent.ts` | Agent 位置、速度、状态和其可视对象。 |
@@ -228,7 +254,7 @@ tools/gis-converter：inspect → convert → validate → --update-manifest
 | 文件 | 作用 |
 | --- | --- |
 | `semantic/SemanticRegion.ts` | 矩形/多边形语义区域、点包含及线段相交判断。 |
-| `semantic/SemanticMap.ts` | 自动区域与人工区域叠加、查询、目标/通行成本及 Restrict 穿越判断。 |
+| `semantic/SemanticMap.ts` | 自动区域与人工区域叠加、空间桶查询、目标/通行成本，以及 Restrict/建筑穿越判断。 |
 | `semantic/ManualOverride.ts` | 高优先级人工语义覆盖层。 |
 | `map/MapTypes.ts` | V0.1 WorldMap、语义和地图适配器类型；V0.3 仍复用语义数据类型。 |
 | `map/MapLoader.ts`、`DemoMapAdapter.ts`、`TerrainBuilder.ts` | V0.1 地图加载、演示地图和 heightmap/程序地形路径，不是当前默认 GLB 入口。 |

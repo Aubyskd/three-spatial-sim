@@ -4,6 +4,9 @@ import { AgentController } from '../agent/AgentController';
 import type { RuntimeObservation } from '../algorithm/Observation';
 import { AssetPlacementManager } from '../assets/AssetPlacementManager';
 import { GeneratedAssetFactory } from '../assets/GeneratedAssetFactory';
+import { BuildingLayer } from '../gis/BuildingLayer';
+import { RoadLayer } from '../gis/RoadLayer';
+import { assertBuildingCollection, assertRoadCollection, buildingSemanticRegions, roadSemanticRegions, type BuildingCollection, type RoadCollection } from '../gis/VectorFeatureTypes';
 import type { PlacementValidation } from '../assets/PlacementValidator';
 import { SIMULATION, COLORS } from '../config/constants';
 import { NavigationDebug } from '../navigation/NavigationDebug';
@@ -35,6 +38,10 @@ interface RuntimeBundle {
   physics: TerrainPhysicsWorld;
   nav: TerrainNavMeshManager;
   spawn: Vector3Data;
+  buildings?: BuildingCollection;
+  roads?: RoadCollection;
+  buildingLayer?: BuildingLayer;
+  roadLayer?: RoadLayer;
   mounted?: {
     agent: Agent;
     character: CharacterController;
@@ -73,6 +80,11 @@ export class MultiTerrainSimulation {
   private navVisible = false;
   private physicsVisible = false;
   private semanticVisible = true;
+  private buildingsVisible = true;
+  private roadsVisible = true;
+  private buildingCollisionVisible = true;
+  private roadWidthVisible = false;
+  private terrainSamplesVisible = false;
   private renderingEnabled = true;
   private capsuleScale = 1;
 
@@ -98,6 +110,11 @@ export class MultiTerrainSimulation {
       toggleNav: (visible) => { this.navVisible = visible; this.runtime?.mounted?.navDebug.setVisible(visible); },
       togglePhysics: (visible) => { this.physicsVisible = visible; this.runtime?.mounted?.debug.setPhysicsVisible(visible); },
       toggleSemantic: (visible) => { this.semanticVisible = visible; this.runtime?.mounted?.debug.setSemanticVisible(visible); },
+      toggleBuildings: (visible) => { this.buildingsVisible = visible; this.runtime?.buildingLayer?.setVisible(visible); },
+      toggleRoads: (visible) => { this.roadsVisible = visible; this.runtime?.roadLayer?.setVisible(visible); },
+      toggleBuildingCollision: (visible) => { this.buildingCollisionVisible = visible; this.runtime?.buildingLayer?.setCollisionDebugVisible(visible); },
+      toggleRoadWidth: (visible) => { this.roadWidthVisible = visible; this.runtime?.roadLayer?.setWidthDebugVisible(visible); },
+      toggleTerrainSamples: (visible) => { this.terrainSamplesVisible = visible; this.runtime?.buildingLayer?.setHeightSamplesVisible(visible); this.runtime?.roadLayer?.setHeightSamplesVisible(visible); },
       setMeshRole: (name, role) => {
         if (!this.runtime || this.isSwitching()) return;
         this.runtime.state.meshRoles[name] = role;
@@ -183,10 +200,18 @@ export class MultiTerrainSimulation {
   private async buildRuntime(state: TerrainRuntimeState, descriptor: TerrainDescriptor): Promise<RuntimeBundle> {
     const data = state.terrainData;
     const bounds = { minX: data.origin.x, maxX: data.origin.x + data.width, minZ: data.origin.z, maxZ: data.origin.z + data.depth };
+    this.panel.setStage('Loading vector layers...');
+    const [buildings, roads] = await Promise.all([
+      descriptor.buildings ? this.loadVectorJson(descriptor.buildings, (value) => assertBuildingCollection(value, data.terrainId)) : undefined,
+      descriptor.roads ? this.loadVectorJson(descriptor.roads, (value) => assertRoadCollection(value, data.terrainId)) : undefined,
+    ]);
     const towerRegions = state.placedAssets.map((asset) => ({ id: `asset-obstacle-${asset.id}`, type: 'obstacle' as const, walkable: false, movementCost: 1000, shape: { kind: 'rectangle' as const, center: { x: asset.position.x, z: asset.position.z }, width: 2.5, depth: 2.5 } }));
-    const semantics = new SemanticMap([...data.semanticRegions, ...towerRegions], bounds, data); semantics.manual.replace(state.semanticOverrides);
+    const semantics = new SemanticMap([...data.semanticRegions, ...roadSemanticRegions(roads), ...buildingSemanticRegions(buildings), ...towerRegions], bounds, data); semantics.manual.replace(state.semanticOverrides);
     const visual = this.visualBuilder.build(data);
+    const buildingLayer = buildings ? new BuildingLayer(buildings) : undefined;
+    const roadLayer = roads ? new RoadLayer(roads) : undefined;
     const physics = await TerrainPhysicsWorld.create(data);
+    if (buildingLayer) physics.setBuildingColliders(buildingLayer.getCollisionBoxes());
     this.panel.setStage('Building navigation...');
     const nav = new TerrainNavMeshManager(semantics, data); await nav.initialize();
     const preferred = descriptor.spawn ?? this.terrainManager.catalog.manifest.spawn;
@@ -198,10 +223,10 @@ export class MultiTerrainSimulation {
     }
     const spawn = chooseAgentSpawn(data, candidates, preferred);
     if (!spawn) {
-      nav.dispose(); physics.dispose(); this.visualBuilder.dispose(visual);
+      nav.dispose(); physics.dispose(); buildingLayer?.dispose(); roadLayer?.dispose(); this.visualBuilder.dispose(visual);
       throw new Error('地形中没有有效的胶囊体出生位置，请检查 DEM 有效范围、坡度和禁区。');
     }
-    return { descriptor, state, visual, semantics, physics, nav, spawn };
+    return { descriptor, state, visual, semantics, physics, nav, spawn, buildings, roads, buildingLayer, roadLayer };
   }
 
   private commitRuntime(runtime: RuntimeBundle, state: TerrainRuntimeState, descriptor: TerrainDescriptor): void {
@@ -214,6 +239,14 @@ export class MultiTerrainSimulation {
     const pathfinder = new Pathfinder(runtime.nav, runtime.semantics); pathfinder.setAgentHeightOffset(this.agentGroundOffset());
     runtime.mounted = { agent, character, controller, pathfinder, debug, navDebug, editor, regionEditor, assets };
     this.renderer.scene.add(runtime.visual.root, agent.object3D, assets.group, editor.cursor);
+    if (runtime.buildingLayer) {
+      runtime.buildingLayer.setVisible(this.buildingsVisible); runtime.buildingLayer.setCollisionDebugVisible(this.buildingCollisionVisible);
+      runtime.buildingLayer.setHeightSamplesVisible(this.terrainSamplesVisible); this.renderer.scene.add(runtime.buildingLayer.root);
+    }
+    if (runtime.roadLayer) {
+      runtime.roadLayer.setVisible(this.roadsVisible); runtime.roadLayer.setWidthDebugVisible(this.roadWidthVisible);
+      runtime.roadLayer.setHeightSamplesVisible(this.terrainSamplesVisible); this.renderer.scene.add(runtime.roadLayer.root);
+    }
     this.runtime = runtime; this.panel.setActiveTerrain(descriptor.id); this.panel.setSwitching(false); this.focusTerrain(); this.panel.showNotice(`${descriptor.name} loaded`, 'success');
     if (Math.max(state.terrainData.width, state.terrainData.depth) > 500) this.focusAgent();
     this.panel.setDetectedMeshes(state.terrainData.detectedMeshes, state.meshRoles);
@@ -222,7 +255,14 @@ export class MultiTerrainSimulation {
   private disposeRuntime(runtime: RuntimeBundle): void {
     const mounted = runtime.mounted;
     if (mounted) { mounted.controller.stop(); mounted.debug.dispose(); mounted.editor.dispose(); mounted.assets.dispose(); mounted.agent.object3D.removeFromParent(); this.disposeObject(mounted.agent.object3D); }
+    runtime.buildingLayer?.dispose(); runtime.roadLayer?.dispose();
     this.visualBuilder.dispose(runtime.visual); runtime.nav.dispose(); runtime.physics.dispose();
+  }
+
+  private async loadVectorJson<T>(path: string, validate: (value: unknown) => T): Promise<T> {
+    const response = await fetch(this.terrainManager.catalog.resolve(path));
+    if (!response.ok) throw new Error(`Vector layer load failed: ${path} (HTTP ${response.status})`);
+    return validate(await response.json());
   }
 
   private setEditTool(tool: TerrainEditTool | null): void {

@@ -9,6 +9,8 @@ export interface TerrainDescriptor {
   samplingResolution: number;
   data?: string;
   metadata?: string;
+  buildings?: string;
+  roads?: string;
   /** auto uses explicit water meshes, or a named-water lowland fallback; none disables fallback. */
   waterMode?: 'auto' | 'infer' | 'none';
   semantic?: string;

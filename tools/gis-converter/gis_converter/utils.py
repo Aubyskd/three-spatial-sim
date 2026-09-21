@@ -55,6 +55,38 @@ class OutputExistsError(GISConverterError):
     code = "OUTPUT_EXISTS"
 
 
+class VectorReadError(GISConverterError):
+    code = "VECTOR_READ_ERROR"
+
+
+class UnsupportedGeometryError(GISConverterError):
+    code = "UNSUPPORTED_GEOMETRY"
+
+
+class VectorCRSError(GISConverterError):
+    code = "VECTOR_CRS_ERROR"
+
+
+class VectorTransformError(GISConverterError):
+    code = "VECTOR_TRANSFORM_ERROR"
+
+
+class TerrainSamplingError(GISConverterError):
+    code = "TERRAIN_SAMPLING_ERROR"
+
+
+class InvalidBuildingGeometryError(GISConverterError):
+    code = "INVALID_BUILDING_GEOMETRY"
+
+
+class InvalidRoadGeometryError(GISConverterError):
+    code = "INVALID_ROAD_GEOMETRY"
+
+
+class VectorOutputError(GISConverterError):
+    code = "VECTOR_OUTPUT_ERROR"
+
+
 def validate_terrain_id(value: str) -> str:
     if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]*", value):
         raise ValidationError("Terrain ID must contain only letters, numbers, _ or -.")

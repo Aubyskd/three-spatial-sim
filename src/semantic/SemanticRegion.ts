@@ -54,6 +54,8 @@ export class SemanticRegion implements SemanticRegionData {
     return inside;
   }
 
+  getBounds(): Readonly<{ minX: number; maxX: number; minZ: number; maxZ: number }> { return this.bounds; }
+
   intersectsSegment(start: { x: number; z: number }, end: { x: number; z: number }): boolean {
     if (Math.max(start.x, end.x) < this.bounds.minX || Math.min(start.x, end.x) > this.bounds.maxX ||
       Math.max(start.z, end.z) < this.bounds.minZ || Math.min(start.z, end.z) > this.bounds.maxZ) return false;

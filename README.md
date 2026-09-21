@@ -1,6 +1,6 @@
 # Three Spatial Sim：项目说明与中文使用手册
 
-Three Spatial Sim 是浏览器中的三维空间仿真平台：Three.js 展示地形、水面、胶囊体和塔站，Rapier 处理物理碰撞，Recast 与网格 A* 规划路径；算法环境可评估和优化信号塔布局。本文按当前源码编写。界面仍显示 V0.3，仓库同时包含后续的 GeoTIFF 导入和交互改进；`package.json` 中的 `0.1.0` 只是 npm 包版本。
+Three Spatial Sim 是浏览器中的三维空间仿真平台：Three.js 展示地形、水面、OSM 建筑/道路、胶囊体和塔站，Rapier 处理物理碰撞，Recast 与网格 A* 规划路径；算法环境可评估和优化信号塔布局。本文按当前源码编写。仓库已经包含 V0.5 GIS/OSM 导入和交互改进；`package.json` 中的 `0.1.0` 只是 npm 包版本。
 
 阅读实现请看 [代码与目录导读](CODEBASE_GUIDE.md)；转换 DEM 的完整实操请看 [GeoTIFF 接入步骤](tools/GIS_GeoTIFF_地形转换与平台接入步骤.md)。
 
@@ -62,6 +62,7 @@ npm run dev
 | `terrain-04` | DEM Terrain | `source/terrain4.glb`，声明 Z-up 与比例换算 |
 | `synthetic-gis-demo` | synthetic-gis-demo | 已生成的 GIS 地形包 |
 | `ny-demo` | ny-demo | 已生成的 GIS 地形包 |
+| `aspen_dem` | Aspen DEM + OSM | GIS DEM 加结构化 OSM 建筑/道路图层 |
 
 切换时先建立新地形的渲染、物理、导航和 Agent，再替换旧运行时；加载失败通常保留原地形。每张地形的编辑和资产状态在**当前浏览器页面会话**中分别保留，刷新或关闭页面后未导出的修改会丢失。
 
@@ -112,13 +113,18 @@ npm run dev
 
 禁区内不能选择路径终点；穿越禁区的路径段会被排除或改为绕行。导出的 Semantic JSON 同样不会自动写回项目，也不会在刷新后自动导入。
 
-### Debug 三个开关
+### Debug 与 OSM 图层开关
 
 | 开关 | 显示内容 | 正确理解 |
 | --- | --- | --- |
 | `Semantic` | 水域、障碍和禁区等半透明贴地语义覆盖；默认开启。 | 人工禁区有轮廓，不是独立地形模型。 |
 | `NavMesh` | 当前导航**采样格**。 | 并非完整 Recast 多边形，也不是原 GLB 的三角面；隐藏它不影响导航。 |
 | `Colliders` | Rapier 世界的调试线框，包括 heightfield、角色和资产碰撞体。 | 与源 GLB 的细节网格可以不同；这是实际仿真碰撞的可视化，开关不改变碰撞。 |
+| `Buildings` | OSM 建筑挤出网格。 | 只控制显示；建筑语义与物理碰撞仍然生效。 |
+| `Roads` | 具有真实宽度并贴地的 OSM 道路带。 | 只控制显示；道路语义仍然保留。 |
+| `Building Collision` | 建筑简化碰撞盒线框。 | 用于检查碰撞近似，不会启停真实碰撞。 |
+| `Road Width Debug` | 道路左右边界。 | 用于核对 `highway`/车道宽度映射。 |
+| `Terrain Height Samples` | 建筑地形采样点与道路采样点。 | 用于排查局部坐标、高度或南北翻转问题。 |
 
 ## 6. 左侧空间优化实验
 
@@ -179,7 +185,7 @@ console.log(reply); // OBSERVE_RESULT；失败时返回带 code/message 的 ERRO
 
 ## 8. GeoTIFF / DEM 转换
 
-Python GIS 工具可检查 GeoTIFF、选择米制投影、等比例重采样、生成 `terrain.json`/`terrain.glb`/`metadata.json`、校验并更新 manifest。快速流程如下；完整参数和注意事项请看 [工具说明](tools/gis-converter/README.md) 与 [中文实操](tools/GIS_GeoTIFF_地形转换与平台接入步骤.md)。
+Python GIS 工具可检查 GeoTIFF、选择米制投影、等比例重采样、生成 `terrain.json`/`terrain.glb`/`metadata.json`、校验并更新 manifest，还可以把 OSM/GeoJSON 建筑和道路转换到同一个地形局部坐标。快速流程如下；完整参数和注意事项请看 [工具说明](tools/gis-converter/README.md)、[中文实操](tools/GIS_GeoTIFF_地形转换与平台接入步骤.md) 与 [V0.5 交付说明](V05_OSM_BUILDINGS_ROADS.md)。
 
 ```powershell
 cd tools/gis-converter
@@ -191,7 +197,20 @@ python -m gis_converter.cli convert --input input/map.tif --output ../../public/
 python -m gis_converter.cli validate --terrain ../../public/assets/maps/terrain-demo/generated/my-dem
 ```
 
-验证通过后再用 `--update-manifest` 注册；覆盖同名输出需另加 `--overwrite`，旧文件会备份。刷新平台后在地形列表选择新 ID。`terrain.json` 是运行时高度真值；`sampleCoverage` 保留 NoData/未覆盖位置，不应把仅为保持网格有限而填充高度的区域当成可部署地面。当前工具只处理 DEM，不导入 OSM 建筑、道路、水系或卫星影像。
+验证通过后再用 `--update-manifest` 注册；覆盖同名输出需另加 `--overwrite`，旧文件会备份。刷新平台后在地形列表选择新 ID。`terrain.json` 是运行时高度真值；`sampleCoverage` 保留 NoData/未覆盖位置，不应把仅为保持网格有限而填充高度的区域当成可部署地面。
+
+### 导入 OSM 建筑和道路
+
+V0.5 的 `vector-inspect` 用来查看 GeoJSON 的 CRS、几何类型、数量、范围、字段和无效要素；`vector-convert` 读取目标地形的 `metadata.json` 与 `terrain.json`，生成结构化 `buildings.local.json` / `roads.local.json`。不要修改原始 GeoJSON，也不要为矢量数据重新计算 origin。以 Aspen 为例：
+
+```powershell
+cd tools/gis-converter
+.\.venv\Scripts\python.exe -m gis_converter.cli vector-inspect --input input/aspen/raw/aspen_buildings.geojson
+.\.venv\Scripts\python.exe -m gis_converter.cli vector-convert --input input/aspen/raw/aspen_buildings.geojson --terrain-metadata ../../public/assets/maps/terrain-demo/generated/aspen/metadata.json --terrain-data ../../public/assets/maps/terrain-demo/generated/aspen/terrain.json --output ../../public/assets/maps/terrain-demo/generated/aspen/processed/buildings.local.json --type buildings
+.\.venv\Scripts\python.exe -m gis_converter.cli vector-convert --input input/aspen/raw/aspen_roads.geojson --terrain-metadata ../../public/assets/maps/terrain-demo/generated/aspen/metadata.json --terrain-data ../../public/assets/maps/terrain-demo/generated/aspen/terrain.json --output ../../public/assets/maps/terrain-demo/generated/aspen/processed/roads.local.json --type roads
+```
+
+在 manifest 对应地形项中设置 `buildings` 和 `roads` 相对路径，刷新并选择该地形。加载顺序是地形数据 → 矢量 JSON → 语义注册 → 建筑碰撞 → 导航；文件缺失或结构错误会中止这次地形切换，而不是隐藏错误。Aspen 已配置好，可直接选择 `aspen_dem` 检查道路、建筑与地形的对齐。
 
 ## 9. 保存边界与常见问题
 

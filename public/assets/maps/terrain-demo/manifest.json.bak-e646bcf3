@@ -60,17 +60,6 @@
       "data": "generated/ny-demo/terrain.json",
       "metadata": "generated/ny-demo/metadata.json",
       "samplingResolution": 128
-    },
-    {
-      "id": "aspen_dem",
-      "name": "aspen_dem",
-      "type": "glb",
-      "source": "generated/aspen/terrain.glb",
-      "data": "generated/aspen/terrain.json",
-      "metadata": "generated/aspen/metadata.json",
-      "buildings": "generated/aspen/processed/buildings.local.json",
-      "roads": "generated/aspen/processed/roads.local.json",
-      "samplingResolution": 128
     }
   ]
 }

@@ -96,6 +96,8 @@ def test_integration_aw3d30(tmp_path: Path) -> None:
     assert read_dem(source).crs.to_string() == "EPSG:4326"
     result = convert(ConversionConfig(source, tmp_path / "aw3d30", "aw3d30", resolution=128))
     assert result.target_crs == "EPSG:32618"
-    assert 1100 < result.terrain_width < 1700
-    assert 900 < result.terrain_depth < 1500
+    # The supplied AW3D30 tile covers about 0.20° × 0.096° near 42°N:
+    # its projected size is roughly 16.7 km × 10.7 km, not 1/10 of that.
+    assert 16000 < result.terrain_width < 17500
+    assert 10000 < result.terrain_depth < 11500
     assert validate_package(result.output_dir).vertices == result.grid_rows * result.grid_cols

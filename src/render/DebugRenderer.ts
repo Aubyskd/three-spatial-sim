@@ -44,6 +44,10 @@ export class DebugRenderer {
     this.clearGroup(this.semanticGroup);
     const regions = [...this.semantics.autoRegions, ...this.semantics.manual.all()];
     for (const region of regions) {
+      // OSM buildings and roads have dedicated merged runtime layers. Rebuilding
+      // thousands of terrain-clipped semantic meshes here would duplicate them
+      // and make Aspen initialization unnecessarily expensive.
+      if (region.id.startsWith('osm-building-') || region.id.startsWith('osm-road-')) continue;
       if (this.terrain) {
         const explicitMeshWater = region.type === 'water' && this.terrain.waterGrid
           && this.terrain.waterRegions.some((water) => water.id === region.id);

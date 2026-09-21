@@ -15,6 +15,10 @@ import { Pathfinder } from '../src/navigation/Pathfinder';
 import type { NavigationCell } from '../src/navigation/NavMeshManager';
 import { buildTerrainRegionOverlay, sampleVisualHeight, terrainLinePoints } from '../src/render/TerrainRegionOverlay';
 import type { TerrainData } from '../src/terrain/TerrainTypes';
+import { TerrainHeightProvider } from '../src/gis/TerrainHeightProvider';
+import { BuildingLayer } from '../src/gis/BuildingLayer';
+import { RoadLayer } from '../src/gis/RoadLayer';
+import { buildingSemanticRegions, roadSemanticRegions, type BuildingCollection, type RoadCollection } from '../src/gis/VectorFeatureTypes';
 
 function makeTerrain() {
   const land = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
@@ -157,6 +161,52 @@ test('restricted polygon crossings and boundary touches are detected even betwee
   assert.equal(semantics.segmentIntersectsRestricted({ x: 0, z: 1 }, { x: 1, z: 1 }), false);
 });
 
+test('GIS vector layers preserve holes, road width, height samples and obstacle semantics', () => {
+  const buildings: BuildingCollection = {
+    type: 'BuildingCollection', terrainId: 'vector-test', projectedCRS: 'EPSG:32613',
+    coordinateConvention: { x: 'east', y: 'up', z: 'south' },
+    features: [{
+      id: 'building-1', type: 'building', baseHeight: 3, extrudeHeight: 9,
+      rings: [
+        [[-2,-2],[2,-2],[2,2],[-2,2],[-2,-2]],
+        [[-0.5,-0.5],[-0.5,0.5],[0.5,0.5],[0.5,-0.5],[-0.5,-0.5]],
+      ],
+      terrainHeights: [[3,3,3,3,3],[3,3,3,3,3]], properties: {},
+      sourceFeatureId: 'source-building', sourceType: 'Polygon', sourceProperties: {},
+    }],
+  };
+  const roads: RoadCollection = {
+    type: 'RoadCollection', terrainId: 'vector-test', projectedCRS: 'EPSG:32613',
+    coordinateConvention: { x: 'east', y: 'up', z: 'south' },
+    features: [{ id: 'road-1', type: 'road', centerline: [[-8,1.05,5],[0,2.05,5],[8,3.05,5]], width: 6,
+      properties: { highway: 'residential' }, sourceFeatureId: 'source-road', sourceType: 'LineString', sourceProperties: {} }],
+  };
+  const buildingLayer = new BuildingLayer(buildings); const roadLayer = new RoadLayer(roads);
+  try {
+    assert.equal(buildingLayer.getCollisionBoxes().length, 1);
+    assert.equal(buildingLayer.getCollisionBoxes()[0].center.y, 7.5);
+    assert.ok(buildingLayer.root.getObjectByName('osm-buildings-merged'));
+    assert.ok(roadLayer.root.getObjectByName('osm-roads-ribbon'));
+    const semantics = new SemanticMap([...roadSemanticRegions(roads), ...buildingSemanticRegions(buildings)], { minX: -10, maxX: 10, minZ: -10, maxZ: 10 });
+    assert.equal(semantics.regionAt(0, 0)?.type, 'obstacle');
+    assert.equal(semantics.regionAt(0, 5)?.type, 'road');
+    assert.equal(semantics.segmentIntersectsBlocked({ x: -4, z: 0 }, { x: 4, z: 0 }), true);
+  } finally { buildingLayer.dispose(); roadLayer.dispose(); }
+});
+
+test('TerrainHeightProvider uses the same south-positive bilinear grid mapping', () => {
+  const terrain: TerrainData = {
+    terrainId: 'height-provider', width: 20, depth: 20, rows: 3, cols: 3,
+    origin: { x: -10, y: 0, z: -10 }, heights: new Float32Array([0,10,20,10,20,30,20,30,40]),
+    minHeight: 0, maxHeight: 40, waterRegions: [], semanticRegions: [], detectedMeshes: [], revision: 0,
+  };
+  const provider = new TerrainHeightProvider(terrain);
+  assert.equal(provider.heightAt(-10, -10), 0);
+  assert.equal(provider.heightAt(0, 0), 20);
+  assert.equal(provider.heightAt(10, 10), 40);
+  assert.ok(Number.isNaN(provider.heightAt(11, 0)));
+});
+
 test('restricted overlay follows the displayed terrain triangles, including after a height edit', () => {
   const data: TerrainData = {
     terrainId: 'offset-terrain', width: 12, depth: 12, rows: 3, cols: 3,
@@ -263,5 +313,21 @@ test('changing capsule height updates both visible body and collision shape', as
     assert.ok(Math.abs(character.collider.halfHeight() - 0.9) < 1e-5);
     assert.ok(Math.abs(character.position().y - 1.85) < 1e-5);
     assert.equal(agent.object3D.scale.x, 1); // The locator stays independently sized.
+  } finally { physics.dispose(); }
+});
+
+test('simplified OSM building collider blocks a horizontal Rapier ray', async () => {
+  const terrain: TerrainData = {
+    terrainId: 'building-collider', width: 20, depth: 20, rows: 2, cols: 2,
+    origin: { x: -10, y: 0, z: -10 }, heights: new Float32Array(4),
+    minHeight: 0, maxHeight: 0, waterRegions: [], semanticRegions: [], detectedMeshes: [], revision: 0,
+  };
+  const physics = await TerrainPhysicsWorld.create(terrain);
+  try {
+    physics.setBuildingColliders([{ id: 'b', center: { x: 0, y: 2.5, z: 0 }, size: { x: 2, y: 5, z: 2 } }]);
+    physics.step(1 / 60);
+    const hit = physics.world.castRay(new physics.rapier.Ray({ x: -3, y: 2.5, z: 0 }, { x: 1, y: 0, z: 0 }), 10, true);
+    assert.ok(hit);
+    assert.ok(Math.abs(hit.timeOfImpact - 2) < 1e-4);
   } finally { physics.dispose(); }
 });

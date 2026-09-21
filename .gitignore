@@ -9,3 +9,4 @@ __pycache__/
 .pytest_cache/
 tools/gis-converter/output/*
 !tools/gis-converter/output/.gitkeep
+public/assets/maps/terrain-demo/source/terrain3.glb

@@ -23,6 +23,11 @@ export interface V02PanelActions {
   toggleNav(visible: boolean): void;
   togglePhysics(visible: boolean): void;
   toggleSemantic(visible: boolean): void;
+  toggleBuildings(visible: boolean): void;
+  toggleRoads(visible: boolean): void;
+  toggleBuildingCollision(visible: boolean): void;
+  toggleRoadWidth(visible: boolean): void;
+  toggleTerrainSamples(visible: boolean): void;
   setMeshRole(name: string, role: DetectedTerrainMesh['role']): void;
 }
 
@@ -45,7 +50,7 @@ export class V02ControlPanel {
       <section><h2>Terrain</h2><label class="field"><span>Current Terrain</span><select data-control="terrain">${terrains.map((terrain) => `<option value="${terrain.id}">${terrain.name}</option>`).join('')}</select></label><div class="row"><button data-action="reload">Reload Terrain</button><button data-action="focus">Focus Terrain</button></div><div class="terrain-info"><span data-value="terrainInfo">—</span><span data-value="bounds">—</span><span data-value="height">—</span><span data-value="revision">—</span><span data-value="dirty">—</span><span data-value="meshes">—</span></div><details class="mesh-mapping"><summary>Detected Meshes / Roles</summary><div></div></details></section>
       <section><h2>Edit Terrain</h2><div class="segmented"><button data-tool="raise">Raise</button><button data-tool="lower">Lower</button><button data-tool="flatten">Flatten</button><button data-tool="off">Off</button></div><label class="range">Radius <input data-control="radius" type="range" min="1" max="12" step="0.5" value="3"><output>3</output></label><label class="range">Strength <input data-control="strength" type="range" min="0.05" max="1.5" step="0.05" value="0.45"><output>0.45</output></label><div class="row"><button data-action="exportTerrain">Export Terrain</button><button data-action="exportSemantic">Export Semantic</button></div></section>
       <section><h2>Assets & Regions</h2><div class="row"><button data-action="tower">Place Signal Tower</button><button data-action="region" aria-pressed="false">Add Restricted</button></div><div class="row" data-region-controls hidden><button data-action="undoRegion">撤销上一点</button><button data-action="cancelRegion">取消选区</button></div><div class="row"><button data-action="clearRegion">Clear Regions</button><button data-action="exportAssets">Export Assets</button></div></section>
-      <section><h2>Debug</h2><div class="toggle-list">${this.toggle('nav','NavMesh')}${this.toggle('physics','Colliders')}${this.toggle('semantic','Semantic',true)}</div></section>
+      <section><h2>Debug</h2><div class="toggle-list">${this.toggle('nav','NavMesh')}${this.toggle('physics','Colliders')}${this.toggle('semantic','Semantic',true)}${this.toggle('buildings','Buildings',true)}${this.toggle('roads','Roads',true)}${this.toggle('buildingCollision','Building Collision',true)}${this.toggle('roadWidth','Road Width Debug')}${this.toggle('terrainSamples','Terrain Height Samples')}</div></section>
       <div class="loading-stage" aria-live="polite"></div><div class="notice" aria-live="polite"></div>`;
     host.append(this.root);
     this.terrainSelect = this.root.querySelector('[data-control="terrain"]') as HTMLSelectElement;
@@ -68,6 +73,11 @@ export class V02ControlPanel {
     (this.root.querySelector('[data-toggle="nav"]') as HTMLInputElement).onchange = (event) => actions.toggleNav((event.currentTarget as HTMLInputElement).checked);
     (this.root.querySelector('[data-toggle="physics"]') as HTMLInputElement).onchange = (event) => actions.togglePhysics((event.currentTarget as HTMLInputElement).checked);
     (this.root.querySelector('[data-toggle="semantic"]') as HTMLInputElement).onchange = (event) => actions.toggleSemantic((event.currentTarget as HTMLInputElement).checked);
+    (this.root.querySelector('[data-toggle="buildings"]') as HTMLInputElement).onchange = (event) => actions.toggleBuildings((event.currentTarget as HTMLInputElement).checked);
+    (this.root.querySelector('[data-toggle="roads"]') as HTMLInputElement).onchange = (event) => actions.toggleRoads((event.currentTarget as HTMLInputElement).checked);
+    (this.root.querySelector('[data-toggle="buildingCollision"]') as HTMLInputElement).onchange = (event) => actions.toggleBuildingCollision((event.currentTarget as HTMLInputElement).checked);
+    (this.root.querySelector('[data-toggle="roadWidth"]') as HTMLInputElement).onchange = (event) => actions.toggleRoadWidth((event.currentTarget as HTMLInputElement).checked);
+    (this.root.querySelector('[data-toggle="terrainSamples"]') as HTMLInputElement).onchange = (event) => actions.toggleTerrainSamples((event.currentTarget as HTMLInputElement).checked);
   }
 
   update(fps: number, observation: RuntimeObservation, state?: TerrainRuntimeState, descriptor?: TerrainDescriptor): void {

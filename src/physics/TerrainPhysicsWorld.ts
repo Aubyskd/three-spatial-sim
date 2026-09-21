@@ -1,4 +1,5 @@
 import RAPIER from '@dimforge/rapier3d-compat';
+import type { BuildingColliderBox } from '../gis/VectorFeatureTypes';
 import type { PlacedAsset, TerrainData } from '../terrain/TerrainTypes';
 
 export class TerrainPhysicsWorld {
@@ -6,6 +7,7 @@ export class TerrainPhysicsWorld {
   readonly rapier = RAPIER;
   private terrainBody?: RAPIER.RigidBody;
   private readonly assetBodies = new Map<string, RAPIER.RigidBody>();
+  private buildingBody?: RAPIER.RigidBody;
 
   private constructor() { this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 }); }
 
@@ -48,6 +50,17 @@ export class TerrainPhysicsWorld {
   }
 
   restoreAssets(assets: PlacedAsset[]): void { assets.filter((asset) => !asset.invalidPlacement).forEach((asset) => this.addSignalTower(asset)); }
+  setBuildingColliders(boxes: readonly BuildingColliderBox[]): void {
+    if (this.buildingBody) this.world.removeRigidBody(this.buildingBody);
+    this.buildingBody = undefined;
+    if (!boxes.length) return;
+    const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+    for (const box of boxes) {
+      this.world.createCollider(RAPIER.ColliderDesc.cuboid(box.size.x / 2, box.size.y / 2, box.size.z / 2)
+        .setTranslation(box.center.x, box.center.y, box.center.z).setFriction(0.9), body);
+    }
+    this.buildingBody = body;
+  }
   step(dt: number): void { this.world.timestep = dt; this.world.step(); }
   debugGeometry(): { vertices: Float32Array; colors: Float32Array } { return this.world.debugRender(); }
   dispose(): void { this.world.free(); }

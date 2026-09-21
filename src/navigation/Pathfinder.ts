@@ -69,7 +69,7 @@ export class Pathfinder {
       }
       open.delete(currentKey);
       for (const neighbor of this.nav.neighbors(current)) {
-        if (this.semantics.segmentIntersectsRestricted(current, neighbor)) continue;
+        if (this.semantics.segmentIntersectsBlocked(current, neighbor)) continue;
         const neighborKey = this.nav.key(neighbor.x, neighbor.z);
         const moveCost = this.distance(current, neighbor) * this.semantics.movementCostAt(neighbor.x, neighbor.z);
         const tentative = (gScore.get(currentKey) ?? Infinity) + moveCost;
@@ -113,7 +113,7 @@ export class Pathfinder {
   }
 
   private segmentWalkable(a: Vector3Data, b: Vector3Data): boolean {
-    if (this.semantics.segmentIntersectsRestricted(a, b)) return false;
+    if (this.semantics.segmentIntersectsBlocked(a, b)) return false;
     const length = Math.hypot(b.x - a.x, b.z - a.z);
     const steps = Math.ceil(length / 0.35);
     for (let i = 0; i <= steps; i += 1) {

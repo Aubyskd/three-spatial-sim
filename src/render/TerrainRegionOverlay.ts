@@ -57,6 +57,18 @@ function cellSupported(data: TerrainData, row: number, col: number): boolean {
     && data.sampleCoverage[index + data.cols] === 1 && data.sampleCoverage[index + data.cols + 1] === 1;
 }
 
+function sampleCellTriangleHeight(data: TerrainData, row: number, col: number, x: number, z: number): number {
+  const dx = data.width / (data.cols - 1); const dz = data.depth / (data.rows - 1);
+  const tx = THREE.MathUtils.clamp((x - (data.origin.x + col * dx)) / dx, 0, 1);
+  const tz = THREE.MathUtils.clamp((z - (data.origin.z + row * dz)) / dz, 0, 1);
+  const i = row * data.cols + col;
+  const nw = data.heights[i]; const ne = data.heights[i + 1];
+  const sw = data.heights[i + data.cols]; const se = data.heights[i + data.cols + 1];
+  return tx + tz <= 1
+    ? nw * (1 - tx - tz) + ne * tx + sw * tz
+    : se * (tx + tz - 1) + sw * (1 - tx) + ne * (1 - tz);
+}
+
 /** The PlaneGeometry uses the diagonal from the south-west to north-east vertex. */
 export function sampleVisualHeight(data: TerrainData, x: number, z: number): number {
   const rawX = (x - data.origin.x) / data.width * (data.cols - 1);
@@ -64,16 +76,28 @@ export function sampleVisualHeight(data: TerrainData, x: number, z: number): num
   if (rawX < -EPSILON || rawZ < -EPSILON || rawX > data.cols - 1 + EPSILON || rawZ > data.rows - 1 + EPSILON) return Number.NaN;
   const gx = THREE.MathUtils.clamp(rawX, 0, data.cols - 1);
   const gz = THREE.MathUtils.clamp(rawZ, 0, data.rows - 1);
-  const col = Math.min(data.cols - 2, Math.floor(gx));
-  const row = Math.min(data.rows - 2, Math.floor(gz));
-  if (!cellSupported(data, row, col)) return Number.NaN;
-  const tx = gx - col; const tz = gz - row;
-  const i = row * data.cols + col;
-  const nw = data.heights[i]; const ne = data.heights[i + 1];
-  const sw = data.heights[i + data.cols]; const se = data.heights[i + data.cols + 1];
-  return tx + tz <= 1
-    ? nw * (1 - tx - tz) + ne * tx + sw * tz
-    : se * (tx + tz - 1) + sw * (1 - tx) + ne * (1 - tz);
+  const primaryCol = Math.min(data.cols - 2, Math.floor(gx));
+  const primaryRow = Math.min(data.rows - 2, Math.floor(gz));
+  // A vertex on an exact grid boundary belongs to both adjacent cells. Prefer
+  // the primary cell, but allow the supported neighbour when the primary one
+  // is masked. This prevents a clipped overlay that was built from a valid
+  // terrain triangle from acquiring NaN at its east/south boundary.
+  const colCandidates = [primaryCol];
+  const rowCandidates = [primaryRow];
+  if (Math.abs(gx - Math.round(gx)) <= EPSILON && primaryCol > 0) colCandidates.push(primaryCol - 1);
+  if (Math.abs(gz - Math.round(gz)) <= EPSILON && primaryRow > 0) rowCandidates.push(primaryRow - 1);
+  for (const row of rowCandidates) for (const col of colCandidates) {
+    if (!cellSupported(data, row, col)) continue;
+    const tx = gx - col; const tz = gz - row;
+    if (tx < -EPSILON || tx > 1 + EPSILON || tz < -EPSILON || tz > 1 + EPSILON) continue;
+    const i = row * data.cols + col;
+    const nw = data.heights[i]; const ne = data.heights[i + 1];
+    const sw = data.heights[i + data.cols]; const se = data.heights[i + data.cols + 1];
+    return tx + tz <= 1
+      ? nw * (1 - tx - tz) + ne * tx + sw * tz
+      : se * (tx + tz - 1) + sw * (1 - tx) + ne * (1 - tz);
+  }
+  return Number.NaN;
 }
 
 /** Clip the semantic polygon against the actual terrain triangles, retaining their exact height planes. */
@@ -105,7 +129,10 @@ export function buildTerrainRegionOverlay(
             (clipped[0].z + clipped[i].z + clipped[i + 1].z) / 3,
           )) continue;
           for (const point of [clipped[0], clipped[i], clipped[i + 1]]) {
-            vertices.push(point.x, sampleVisualHeight(data, point.x, point.z) + offset, point.z);
+            // `row,col` identifies the supported terrain cell being clipped.
+            // Sampling that exact cell avoids selecting the masked neighbour
+            // when a clipped point lies numerically on a DEM grid boundary.
+            vertices.push(point.x, sampleCellTriangleHeight(data, row, col, point.x, point.z) + offset, point.z);
           }
         }
       }

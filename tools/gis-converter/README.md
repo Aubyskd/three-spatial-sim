@@ -1,6 +1,6 @@
-# GIS GeoTIFF 地形转换工具（V0.4）
+# GIS 地形与 OSM 矢量转换工具（V0.4 / V0.5）
 
-此目录是项目自带的 Python 命令行工具，用于把本地 GeoTIFF DEM 转换为可注册到 Three Spatial Sim 的地形包，**不依赖 QGIS/Blender 图形界面**。入口是 `python -m gis_converter.cli`，包含 `inspect`、`convert`、`validate`、`batch` 四个子命令。项目整体操作见 [根目录使用手册](../../README.md)，真实数据的逐步示例见 [GeoTIFF 接入步骤](../GIS_GeoTIFF_地形转换与平台接入步骤.md)。
+此目录是项目自带的 Python 命令行工具，用于把本地 GeoTIFF DEM 转换为可注册到 Three Spatial Sim 的地形包，并把 OSM/GeoJSON 建筑、道路转换到同一地形局部坐标。工具**不依赖 QGIS/Blender 图形界面**。入口是 `python -m gis_converter.cli`；DEM 使用 `inspect`、`convert`、`validate`、`batch`，矢量数据使用 `vector-inspect`、`vector-convert`。项目整体操作见 [根目录使用手册](../../README.md)，真实数据的逐步示例见 [GeoTIFF 接入步骤](../GIS_GeoTIFF_地形转换与平台接入步骤.md)。
 
 ```text
 GeoTIFF DEM → CRS 检查 → 米制坐标系 → 保持长宽比的高度网格
@@ -104,4 +104,25 @@ NoData、NaN、`-9999` 不参与有效高程统计。小型内部缺口会插值
 
 如测试依赖未安装，先安装 `pytest`（或 `pip install -e ".[test]"`）。真实 `input/output_AW3D30.tif` 存在时会运行对应验收；不存在则该项跳过。另有合成 GeoTIFF 集成测试，不会把合成数据伪称为真实 DEM。
 
-当前 V0.4 仅导入地形高程，不导入 OSM 建筑、道路、水系、卫星影像或 3D Tiles；这些应作为后续独立数据管线接入。
+## 8. OSM / GeoJSON 建筑与道路（V0.5）
+
+先查看源文件，不会修改它：
+
+```powershell
+python -m gis_converter.cli vector-inspect --input input/aspen/raw/aspen_buildings.geojson
+python -m gis_converter.cli vector-inspect --input input/aspen/raw/aspen_roads.geojson
+```
+
+Aspen 的实际转换命令如下。输出放在 `processed/`，原始 GeoJSON 始终保留在 `input/aspen/raw/`：
+
+```powershell
+python -m gis_converter.cli vector-convert --input input/aspen/raw/aspen_buildings.geojson --terrain-metadata ../../public/assets/maps/terrain-demo/generated/aspen/metadata.json --terrain-data ../../public/assets/maps/terrain-demo/generated/aspen/terrain.json --output ../../public/assets/maps/terrain-demo/generated/aspen/processed/buildings.local.json --type buildings --building-base-strategy median --default-floor-height 3 --default-building-height 9
+
+python -m gis_converter.cli vector-convert --input input/aspen/raw/aspen_roads.geojson --terrain-metadata ../../public/assets/maps/terrain-demo/generated/aspen/metadata.json --terrain-data ../../public/assets/maps/terrain-demo/generated/aspen/terrain.json --output ../../public/assets/maps/terrain-demo/generated/aspen/processed/roads.local.json --type roads --road-height-offset 0.05 --road-max-segment-length 10
+```
+
+矢量转换不自行计算原点或硬编码 UTM 区号，而是读取目标地形 `metadata.json` 的 `projectedCRS`、`localOrigin` 和坐标约定。转换顺序为：源 CRS → 目标投影 CRS → `X=Easting-originEasting`、`Z=originNorthing-Northing` → 从 `terrain.json` 双线性采样 Y。建筑底面默认取 footprint 顶点地形高度中位数；建筑高度优先使用 `height`，其次 `building:levels × 3m`，最后 9m。道路按 `highway`/`lanes` 估算真实宽度，每 10m 以内加密采样，并在地形高度上增加 0.05m 防止闪烁。
+
+`vector-convert` 会裁剪目标地形范围、验证有限坐标与几何、报告不支持/无效/越界/掩膜地形要素；核心读取、CRS 或输出错误会以非零退出码失败，不会静默吞掉。完整数据格式、运行时接入和 Aspen 验收结果见 [V0.5 交付说明](../../V05_OSM_BUILDINGS_ROADS.md)。
+
+当前不处理 OSM 水系、卫星影像、3D Tiles，也不把地形、建筑和道路烘焙成单一 GLB；结构化 JSON 被保留以支持属性追踪、语义查询、碰撞分类和未来编辑。
