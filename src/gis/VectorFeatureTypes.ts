@@ -44,10 +44,9 @@ export interface RoadCollection {
   warnings?: string[];
 }
 
-export interface BuildingColliderBox {
-  id: string;
-  center: { x: number; y: number; z: number };
-  size: { x: number; y: number; z: number };
+export interface BuildingColliderMesh {
+  vertices: Float32Array;
+  indices: Uint32Array;
 }
 
 export function assertBuildingCollection(value: unknown, terrainId: string): BuildingCollection {

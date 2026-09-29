@@ -27,7 +27,14 @@ export class AssetPlacementManager {
   place(definitionId: string, x: number, z: number, rotationY = 0): PlacedAsset | null {
     const validation = this.validate(definitionId, x, z);
     if (!validation.valid || validation.height === undefined) return null;
-    const asset: PlacedAsset = { id: `${definitionId}-${Date.now()}-${++this.serial}`, terrainId: this.state.terrainId, definitionId, position: { x, y: validation.height, z }, rotationY, createdAt: Date.now() };
+    return this.placeAt(definitionId, { x, y: validation.height, z }, rotationY, validation, 'terrain');
+  }
+
+  placeAt(definitionId: string, position: { x: number; y: number; z: number }, rotationY = 0, previousValidation?: PlacementValidation, heightMode: PlacedAsset['heightMode'] = 'manual'): PlacedAsset | null {
+    if (![position.x, position.y, position.z, rotationY].every(Number.isFinite)) return null;
+    const validation = previousValidation ?? this.validate(definitionId, position.x, position.z);
+    if (!validation.valid) return null;
+    const asset: PlacedAsset = { id: `${definitionId}-${Date.now()}-${++this.serial}`, terrainId: this.state.terrainId, definitionId, position: { ...position }, rotationY, createdAt: Date.now(), heightMode };
     this.state.placedAssets.push(asset); this.state.assetsDirty = true;
     this.group.add(this.factory.create(asset)); this.physics.addSignalTower(asset);
     return asset;
@@ -45,7 +52,7 @@ export class AssetPlacementManager {
     if (!asset || !definition) return null;
     const validation = this.validator.validate(definition, x, z, id);
     if (!validation.valid || validation.height === undefined) return null;
-    asset.position = { x, y: validation.height, z }; asset.rotationY = rotationY; asset.invalidPlacement = false; this.state.assetsDirty = true;
+    asset.position = { x, y: validation.height, z }; asset.rotationY = rotationY; asset.heightMode = 'terrain'; asset.invalidPlacement = false; this.state.assetsDirty = true;
     const old = this.group.getObjectByName(id); if (old) { old.removeFromParent(); this.disposeObject(old); }
     this.physics.removeAsset(id); this.group.add(this.factory.create(asset)); this.physics.addSignalTower(asset);
     return structuredClone(asset);
@@ -59,7 +66,7 @@ export class AssetPlacementManager {
     for (const asset of this.state.placedAssets) {
       const validation = this.validate(asset.definitionId, asset.position.x, asset.position.z);
       asset.invalidPlacement = !validation.valid;
-      if (!asset.invalidPlacement) { asset.position.y = validation.height ?? asset.position.y; this.group.add(this.factory.create(asset)); this.physics.addSignalTower(asset); }
+      if (!asset.invalidPlacement) { if (asset.heightMode !== 'manual') asset.position.y = validation.height ?? asset.position.y; this.group.add(this.factory.create(asset)); this.physics.addSignalTower(asset); }
     }
   }
 

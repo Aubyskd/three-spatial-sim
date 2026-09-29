@@ -110,6 +110,8 @@ def convert_roads(input_path: Path, metadata_path: Path, terrain_path: Path, out
                     "highway": properties.get("highway"), "name": properties.get("name"),
                     "lanes": properties.get("lanes"), "surface": properties.get("surface"),
                     "maxspeed": properties.get("maxspeed"), "oneway": properties.get("oneway"),
+                    "bridge": properties.get("bridge"), "tunnel": properties.get("tunnel"),
+                    "layer": properties.get("layer"),
                     "raw": properties,
                 }
                 output.append({

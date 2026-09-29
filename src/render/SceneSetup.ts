@@ -32,13 +32,5 @@ export function createSceneEssentials(): SceneEssentials {
   fill.position.set(28, 22, -32);
   scene.add(fill);
 
-  const grid = new THREE.GridHelper(60, 30, 0xc5d3d0, 0xe3e9e8);
-  grid.position.y = 0.025;
-  scene.add(grid);
-
-  const axes = new THREE.AxesHelper(4);
-  axes.setColors(0xdba9a8, 0xa7c9b2, 0xaebfda);
-  axes.position.set(-29, 0.05, -29);
-  scene.add(axes);
   return { scene, camera };
 }

@@ -6,12 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "test:terrain": "esbuild tests/terrain-regression.test.ts --bundle --platform=node --format=esm --outfile=dist/terrain-regression.test.mjs && node --test dist/terrain-regression.test.mjs",
+    "test:terrain": "esbuild tests/terrain-regression.test.ts tests/coordinate-regression.test.ts tests/spatial-analysis-regression.test.ts --bundle --platform=node --format=esm --outdir=dist/tests && node --test dist/tests/terrain-regression.test.js dist/tests/coordinate-regression.test.js dist/tests/spatial-analysis-regression.test.js",
     "preview": "vite preview"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.20.0",
     "@recast-navigation/three": "^0.43.1",
+    "proj4": "^2.22.0",
     "recast-navigation": "^0.43.1",
     "three": "^0.180.0"
   },

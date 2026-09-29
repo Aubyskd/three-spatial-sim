@@ -25,43 +25,6 @@
       "scale": 10
     },
     {
-      "id": "terrain-03",
-      "name": "Extended Terrain",
-      "type": "glb",
-      "source": "source/terrain3.glb",
-      "samplingResolution": 32,
-      "semantic": "data/semantic-03.json",
-      "assets": "data/assets-03.json",
-      "scale": 1.44
-    },
-    {
-      "id": "terrain-04",
-      "name": "DEM Terrain",
-      "type": "glb",
-      "source": "source/terrain4.glb",
-      "samplingResolution": 64,
-      "scale": 0.06,
-      "upAxis": "z"
-    },
-    {
-      "id": "synthetic-gis-demo",
-      "name": "synthetic-gis-demo",
-      "type": "glb",
-      "source": "generated/synthetic-gis-demo/terrain.glb",
-      "data": "generated/synthetic-gis-demo/terrain.json",
-      "metadata": "generated/synthetic-gis-demo/metadata.json",
-      "samplingResolution": 128
-    },
-    {
-      "id": "ny-demo",
-      "name": "ny-demo",
-      "type": "glb",
-      "source": "generated/ny-demo/terrain.glb",
-      "data": "generated/ny-demo/terrain.json",
-      "metadata": "generated/ny-demo/metadata.json",
-      "samplingResolution": 128
-    },
-    {
       "id": "aspen_dem",
       "name": "aspen_dem",
       "type": "glb",

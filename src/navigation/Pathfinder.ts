@@ -49,7 +49,25 @@ export class Pathfinder {
     return { success: false, path: [], reason: '没有找到可通行路径' };
   }
 
-  private findGridPath(start: Vector3Data, target: Vector3Data): Vector3Data[] {
+  /** Returns every independent valid candidate currently available for graph analysis. */
+  findPathCandidates(start: Vector3Data, target: Vector3Data): Vector3Data[][] {
+    if (!this.semantics.validateTarget(start.x, start.z).valid || !this.semantics.validateTarget(target.x, target.z).valid
+      || !this.nav.isWalkable(start.x, start.z) || !this.nav.isWalkable(target.x, target.z)) return [];
+    const candidates: Vector3Data[][] = [];
+    const recast = this.nav.computeRecastPath(start, target)?.map((point) => ({ ...point, y: point.y - 0.9 }));
+    if (recast && recast.length >= 2) {
+      recast[0] = { ...start }; recast[recast.length - 1] = { ...target };
+      if (this.pathSegmentsAreWalkable(recast)) candidates.push(recast);
+    }
+    const fallback = this.findGridPath(start, target, false, 0);
+    if (fallback.length > 0) {
+      const path = this.simplify([{ ...start }, ...fallback, { ...target }]);
+      if (this.pathSegmentsAreWalkable(path)) candidates.push(path);
+    }
+    return candidates;
+  }
+
+  private findGridPath(start: Vector3Data, target: Vector3Data, weighted = true, heightOffset = this.agentHeightOffset): Vector3Data[] {
     const startCell = this.nav.getCell(start.x, start.z);
     const endCell = this.nav.getCell(target.x, target.z);
     if (!startCell || !endCell) return [];
@@ -57,7 +75,7 @@ export class Pathfinder {
     const open = new Map<string, NavigationCell>([[this.nav.key(startCell.x, startCell.z), startCell]]);
     const cameFrom = new Map<string, string>();
     const gScore = new Map<string, number>([[this.nav.key(startCell.x, startCell.z), 0]]);
-    const fScore = new Map<string, number>([[this.nav.key(startCell.x, startCell.z), this.distance(startCell, endCell)]]);
+    const fScore = new Map<string, number>([[this.nav.key(startCell.x, startCell.z), weighted ? this.distance(startCell, endCell) : this.spatialDistance(startCell, endCell)]]);
 
     while (open.size > 0) {
       const currentEntry = [...open.entries()].reduce((best, entry) =>
@@ -65,18 +83,19 @@ export class Pathfinder {
       );
       const [currentKey, current] = currentEntry;
       if (currentKey === this.nav.key(endCell.x, endCell.z)) {
-        return this.reconstruct(currentKey, cameFrom).map((cell) => ({ x: cell.x, y: (cell.y ?? start.y - this.agentHeightOffset) + this.agentHeightOffset, z: cell.z }));
+        return this.reconstruct(currentKey, cameFrom).map((cell) => ({ x: cell.x, y: (cell.y ?? start.y - heightOffset) + heightOffset, z: cell.z }));
       }
       open.delete(currentKey);
       for (const neighbor of this.nav.neighbors(current)) {
         if (this.semantics.segmentIntersectsBlocked(current, neighbor)) continue;
         const neighborKey = this.nav.key(neighbor.x, neighbor.z);
-        const moveCost = this.distance(current, neighbor) * this.semantics.movementCostAt(neighbor.x, neighbor.z);
+        const baseCost = weighted ? this.distance(current, neighbor) : this.spatialDistance(current, neighbor);
+        const moveCost = baseCost * (weighted ? this.semantics.movementCostAt(neighbor.x, neighbor.z) : 1);
         const tentative = (gScore.get(currentKey) ?? Infinity) + moveCost;
         if (tentative >= (gScore.get(neighborKey) ?? Infinity)) continue;
         cameFrom.set(neighborKey, currentKey);
         gScore.set(neighborKey, tentative);
-        fScore.set(neighborKey, tentative + this.distance(neighbor, endCell));
+        fScore.set(neighborKey, tentative + (weighted ? this.distance(neighbor, endCell) : this.spatialDistance(neighbor, endCell)));
         open.set(neighborKey, neighbor);
       }
     }
@@ -125,5 +144,8 @@ export class Pathfinder {
 
   private distance(a: { x: number; z: number }, b: { x: number; z: number }): number {
     return Math.hypot(a.x - b.x, a.z - b.z);
+  }
+  private spatialDistance(a: { x: number; y?: number; z: number }, b: { x: number; y?: number; z: number }): number {
+    return Math.hypot(a.x - b.x, (a.y ?? 0) - (b.y ?? 0), a.z - b.z);
   }
 }

@@ -208,7 +208,7 @@ building:levels        → levels × 3.0m
 
 `VectorFeatureTypes.ts` 将道路注册为 `road` 语义，将建筑 footprint 注册为 `obstacle`。道路中 motorway/trunk 不标记为步行区域，其他道路按可步行/可行驶语义处理。`SemanticMap` 使用 48×48 空间桶缩小候选集合，避免每次点查询都遍历数千个建筑。
 
-Rapier 在一个固定刚体上为每个建筑创建简化 AABB cuboid collider。这样比数千个复杂 trimesh/凸包更稳定、成本更低；调试开关 `Building Collision` 显示这些近似盒。真实碰撞始终生效，隐藏调试线框不会关闭 collider。
+Rapier 使用与 Three.js 可见建筑完全相同的合并 `ExtrudeGeometry` 顶点和三角形，在一个固定刚体上创建静态 trimesh collider。凹形轮廓、旋转建筑和 courtyard holes 不再被外接 AABB 扩大。调试开关 `Building Collision` 默认关闭，开启后显示同一实体网格的线框；隐藏线框不会关闭真实碰撞。
 
 Recast 仍从 terrain heightfield 生成基础可行走面；路径交付前，`Pathfinder` 对每个路径段检查建筑 obstacle 和人工 Restrict 的精确相交。如果 Recast 候选穿越建筑则改走网格 A*，A* 的每条邻边也执行相同拦截。因此 Agent 不会把建筑内部当作捷径。道路语义的 movement cost 为 1，可作为优先通行区域。
 
@@ -270,7 +270,7 @@ TypeScript：
 
 ## 12. 已知限制和 warning
 
-- 建筑 Rapier collider 与语义 footprint 采用性能优先的简化表示。旋转、凹形建筑的 AABB 可能比可见外形略大；建筑 courtyard holes 在视觉上正确，但碰撞/阻挡不会开放庭院内部。
+- 建筑物理碰撞与可见挤出网格一致，但导航语义目前仍使用 outer footprint 多边形；因此 courtyard hole 的物理空间是空的，路径规划仍会把整个建筑外环视为障碍。完整支持庭院导航需要后续为语义区域增加 holes。
 - 道路是地表 ribbon 和语义优选区域，本版没有创建车辆物理、路口拓扑、单行交通规则或独立道路 collider。
 - 地形和道路仍是 2.5D，一个 X/Z 只能有一个地面高度，不能表达桥下通行、隧道或上下叠层道路。
 - OSM 属性可能缺失或格式不统一；转换器保留 raw/source properties，并按明确 fallback 生成可用高度和宽度。
@@ -293,4 +293,4 @@ npm run build
 npm run dev
 ```
 
-浏览器选择 `aspen_dem`，依次检查 Buildings、Roads、Building Collision、Road Width Debug、Terrain Height Samples。点击建筑外的合法地面设置路径，确认胶囊不穿建筑；建筑内部不应成为有效终点。开启高度点核对道路贴地，开启宽度边界核对不同道路等级，开启碰撞盒核对 Rapier 近似范围。
+浏览器选择 `aspen_dem`，依次检查 Buildings、Roads、Building Collision、Road Width Debug、Terrain Height Samples。点击建筑外的合法地面设置路径，确认胶囊不穿建筑；建筑内部不应成为有效终点。开启高度点核对道路贴地，开启宽度边界核对不同道路等级，开启 Building Collision 核对 Rapier 线框是否与可见建筑表面重合。

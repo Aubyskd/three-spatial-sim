@@ -63,6 +63,7 @@ export interface PlacedAsset {
   position: Vector3Data;
   rotationY: number;
   createdAt: number;
+  heightMode?: 'terrain' | 'manual';
   invalidPlacement?: boolean;
 }
 
@@ -77,7 +78,7 @@ export interface TerrainRuntimeState {
   meshRoles: Record<string, DetectedTerrainMesh['role']>;
 }
 
-export type InteractionMode = 'NORMAL' | 'TERRAIN_EDIT' | 'ASSET_PLACEMENT' | 'REGION_EDIT' | 'AGENT_DEPLOYMENT' | 'TERRAIN_SWITCHING';
+export type InteractionMode = 'NORMAL' | 'TERRAIN_EDIT' | 'ASSET_PLACEMENT' | 'REGION_EDIT' | 'AGENT_DEPLOYMENT' | 'COORDINATE_PICK' | 'SPATIAL_POINT_SELECTION' | 'TERRAIN_SWITCHING';
 export type TerrainEditTool = 'raise' | 'lower' | 'flatten';
 export type TerrainSwitchStage = 'Loading GLB...' | 'Sampling terrain...' | 'Building physics...' | 'Building navigation...' | 'Restoring assets...' | 'Ready';
 export type TerrainErrorCode = 'UNKNOWN_TERRAIN_ID' | 'GLB_LOAD_FAILED' | 'TERRAIN_PARSE_FAILED' | 'NO_LAND_MESH' | 'INVALID_BOUNDS' | 'SAMPLING_FAILED' | 'PHYSICS_BUILD_FAILED' | 'NAVMESH_BUILD_FAILED' | 'STATE_RESTORE_FAILED';

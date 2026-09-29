@@ -53,7 +53,7 @@ tools\gis-converter\input\output_AW3D30.tif
 预期生成的地形目录为：
 
 ```text
-public\assets\maps\terrain-demo\generated\ny-demo
+public\assets\maps\terrain-demo\generated\my-dem
 ```
 
 ## 二、进入转换工具目录并激活虚拟环境
@@ -135,7 +135,7 @@ Suggested target CRS: EPSG:32618
 执行：
 
 ```powershell
-python -m gis_converter.cli convert --input input/output_AW3D30.tif --output ../../public/assets/maps/terrain-demo/generated/ny-demo --terrain-id ny-demo --resolution 128 --target-crs auto
+python -m gis_converter.cli convert --input input/output_AW3D30.tif --output ../../public/assets/maps/terrain-demo/generated/my-dem --terrain-id my-dem --resolution 128 --target-crs auto
 ```
 
 参数说明：
@@ -143,8 +143,8 @@ python -m gis_converter.cli convert --input input/output_AW3D30.tif --output ../
 | 参数 | 本次取值 | 作用 |
 | --- | --- | --- |
 | `--input` | `input/output_AW3D30.tif` | 指定输入 DEM 文件 |
-| `--output` | `../../public/assets/maps/terrain-demo/generated/ny-demo` | 指定地形包输出目录 |
-| `--terrain-id` | `ny-demo` | 设置地形的唯一标识 |
+| `--output` | `../../public/assets/maps/terrain-demo/generated/my-dem` | 指定地形包输出目录 |
+| `--terrain-id` | `my-dem` | 设置地形的唯一标识 |
 | `--resolution` | `128` | 将较长一边重采样为 128 个顶点 |
 | `--target-crs` | `auto` | 根据地理中心自动选择米制投影坐标系 |
 
@@ -163,13 +163,13 @@ NoData: 3.8%
 检查输出目录：
 
 ```powershell
-Get-ChildItem ../../public/assets/maps/terrain-demo/generated/ny-demo
+Get-ChildItem ../../public/assets/maps/terrain-demo/generated/my-dem
 ```
 
 目录中必须包含以下三个文件：
 
 ```text
-ny-demo
+my-dem
 ├── metadata.json
 ├── terrain.glb
 └── terrain.json
@@ -212,17 +212,17 @@ WARNING SUSPICIOUS_TERRAIN_SIZE: verify the source CRS and metre units.
 执行：
 
 ```powershell
-python -m gis_converter.cli validate --terrain ../../public/assets/maps/terrain-demo/generated/ny-demo
+python -m gis_converter.cli validate --terrain ../../public/assets/maps/terrain-demo/generated/my-dem
 ```
 
 本次正确结果为：
 
 ```text
-VALID ny-demo: 10624 vertices, 20828 triangles
+VALID my-dem: 10624 vertices, 20828 triangles
 WARNING SUSPICIOUS_TERRAIN_SIZE: verify the source CRS and metre units.
 ```
 
-出现 `VALID ny-demo` 表示验证通过。验证过程会检查：
+出现 `VALID my-dem` 表示验证通过。验证过程会检查：
 
 - 必要文件是否齐全。
 - 高度值是否为有效有限值。
@@ -238,35 +238,35 @@ WARNING SUSPICIOUS_TERRAIN_SIZE: verify the source CRS and metre units.
 首次转换默认不会修改地图清单。验证通过后，重新执行转换，并添加 `--overwrite` 与 `--update-manifest`：
 
 ```powershell
-python -m gis_converter.cli convert --input input/output_AW3D30.tif --output ../../public/assets/maps/terrain-demo/generated/ny-demo --terrain-id ny-demo --resolution 128 --target-crs auto --overwrite --update-manifest
+python -m gis_converter.cli convert --input input/output_AW3D30.tif --output ../../public/assets/maps/terrain-demo/generated/my-dem --terrain-id my-dem --resolution 128 --target-crs auto --overwrite --update-manifest
 ```
 
 其中：
 
-- `--overwrite`：允许替换已经存在的 `ny-demo` 输出目录。工具会先创建带唯一后缀的备份目录。
+- `--overwrite`：允许替换已经存在的 `my-dem` 输出目录。工具会先创建带唯一后缀的备份目录。
 - `--update-manifest`：在转换和验证成功后，将地形条目写入地图清单。
 
 工具会备份：
 
-- 原有的 `generated/ny-demo` 输出目录。
+- 原有的 `generated/my-dem` 输出目录。
 - 原有的 `public/assets/maps/terrain-demo/manifest.json`。
 
-检查清单中是否已经出现 `ny-demo`：
+检查清单中是否已经出现 `my-dem`：
 
 ```powershell
-Select-String -Path ../../public/assets/maps/terrain-demo/manifest.json -Pattern '"ny-demo"' -Context 0,10
+Select-String -Path ../../public/assets/maps/terrain-demo/manifest.json -Pattern '"my-dem"' -Context 0,10
 ```
 
 预期清单条目为：
 
 ```json
 {
-  "id": "ny-demo",
-  "name": "ny-demo",
+  "id": "my-dem",
+  "name": "my-dem",
   "type": "glb",
-  "source": "generated/ny-demo/terrain.glb",
-  "data": "generated/ny-demo/terrain.json",
-  "metadata": "generated/ny-demo/metadata.json",
+  "source": "generated/my-dem/terrain.glb",
+  "data": "generated/my-dem/terrain.json",
+  "metadata": "generated/my-dem/metadata.json",
   "samplingResolution": 128
 }
 ```
@@ -306,12 +306,12 @@ http://localhost:5173/
 在地形或地图选择界面中选择：
 
 ```text
-ny-demo
+my-dem
 ```
 
 依次确认：
 
-1. 地图清单中能够找到 `ny-demo`。
+1. 地图清单中能够找到 `my-dem`。
 2. 选择后地形能够正常加载。
 3. 山体高度和朝向符合预期。
 4. 页面没有出现地形加载错误。

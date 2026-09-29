@@ -38,6 +38,15 @@ export class TerrainNavMeshManager {
   getCells(): NavigationCell[] { return [...this.cells.values()]; }
   isWalkable(x: number, z: number): boolean { return this.cells.has(this.keyFromPosition(x, z)); }
   getCell(x: number, z: number): NavigationCell | undefined { return this.cells.get(this.keyFromPosition(x, z)); }
+  findNearestWalkablePoint(x: number, z: number, maxDistance: number): { position: Vector3Data; distance: number } | undefined {
+    if (![x, z, maxDistance].every(Number.isFinite) || maxDistance < 0) return undefined;
+    let nearest: NavigationCell | undefined; let nearestDistance = Infinity;
+    for (const cell of this.cells.values()) {
+      const distance = Math.hypot(cell.x - x, cell.z - z);
+      if (distance <= maxDistance && distance < nearestDistance) { nearest = cell; nearestDistance = distance; }
+    }
+    return nearest ? { position: { x: nearest.x, y: nearest.y ?? sampleTerrainHeight(this.terrain, nearest.x, nearest.z), z: nearest.z }, distance: nearestDistance } : undefined;
+  }
   key(x: number, z: number): string { return `${x.toFixed(3)},${z.toFixed(3)}`; }
 
   neighbors(cell: NavigationCell): NavigationCell[] {

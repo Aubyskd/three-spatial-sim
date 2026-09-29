@@ -1,6 +1,6 @@
 # Three Spatial Sim：项目说明与中文使用手册
 
-Three Spatial Sim 是浏览器中的三维空间仿真平台：Three.js 展示地形、水面、OSM 建筑/道路、胶囊体和塔站，Rapier 处理物理碰撞，Recast 与网格 A* 规划路径；算法环境可评估和优化信号塔布局。本文按当前源码编写。仓库已经包含 V0.5 GIS/OSM 导入和交互改进；`package.json` 中的 `0.1.0` 只是 npm 包版本。
+Three Spatial Sim 是浏览器中的三维空间仿真平台：Three.js 展示地形、水面、OSM 建筑/道路、胶囊体和塔站，Rapier 处理物理碰撞，Recast 与网格 A* 规划路径；算法环境可评估和优化信号塔布局。本文按当前源码编写。仓库已经包含 V0.6-B 可见性矩阵与最短路径全可达图、V0.6-A 坐标检查与按坐标放置资产、V0.5 GIS/OSM 导入以及此前的交互改进；`package.json` 中的 `0.1.0` 只是 npm 包版本。
 
 阅读实现请看 [代码与目录导读](CODEBASE_GUIDE.md)；转换 DEM 的完整实操请看 [GeoTIFF 接入步骤](tools/GIS_GeoTIFF_地形转换与平台接入步骤.md)。
 
@@ -19,13 +19,15 @@ npm run dev
 | --- | --- |
 | `npm run build` | TypeScript 检查并生成 `dist/` 生产文件。 |
 | `npm run preview` | 预览已构建的版本；先执行 build。 |
-| `npm run test:terrain` | 运行地形、水体、禁区、路径、碰撞及胶囊体回归测试。 |
+| `npm run test:terrain` | 运行可见性/可达图、坐标转换与放置，以及地形、水体、禁区、路径、碰撞和胶囊体回归测试。 |
 
 仅开发验收时，可访问 `/?algorithmSelfTest=1`，页面会显示算法环境自检报告；正常使用不需要该参数。
 
 ## 2. 界面和基本操作
 
 中央是三维画布，右侧是“算法空间仿真”控制面板，左侧是“空间优化实验”。鼠标左键拖动旋转视角、滚轮缩放、右键拖动平移。画布上的**左键短按**用于选择位置；拖动不会设置路径终点。平台为右手坐标系，Y 向上，X/Z 是地平面，局部单位为米。
+
+右上角的四个图标依次打开“算法空间仿真”“空间优化实验”“Coordinate Inspector”和“Visibility & Reachability”。启动时只显示图标栏；点击一个图标会打开对应浮动面板，并自动关闭此前打开的面板，避免遮挡场景。活动图标会高亮，面板右上角 `×` 或再次点击活动图标可关闭。按住面板标题栏仍可拖动到窗口内任意位置，双击标题栏也可关闭。面板的点击、滚动和拖动事件与 Three.js 画布隔离，拖动面板不会旋转、平移或改变相机投影。
 
 右侧 `FPS` 是画面帧率，`AGENT` 和 `TARGET` 显示 X/Z 坐标，`PATH` 显示空闲、规划、移动、到达或阻塞状态。
 
@@ -50,6 +52,67 @@ npm run dev
 
 公里级 GIS 地形上的胶囊体可能很小，可用“定位胶囊体”；远景定位标记不放大胶囊本体。
 
+### 坐标检查与按坐标放置资产（V0.6-A）
+
+右侧独立的 `Coordinate Inspector / Asset Placement` 面板负责坐标查看、转换和精确放置。平台统一采用右手局部坐标：**+X 向东、+Y 向上、+Z 向南，1 个世界单位 = 1 米**。鼠标移到当前地形表面时，Inspector 会实时显示：
+
+- `Local`：平台局部 X/Y/Z，显示 2 位小数；任何地形都可用。
+- `Projected`：当前 GIS 地形的投影 Easting/Northing/Elevation，显示 2 位小数。
+- `Lon/Lat`：WGS84 经度/纬度/高程，经纬度显示 6 位小数。
+
+每一行的 `Copy` 可复制该组数值。Projected 和 Lon/Lat 只有在当前地形具有合法 `metadata.json`、`projectedCRS` 和 `localOrigin` 时才启用；普通 GLB 地形会明确显示为仅支持 Local，不会猜测或伪造经纬度。
+
+按坐标放置信号塔的步骤：
+
+1. 在面板选择 `Signal Tower` 和输入模式：`Local`、`Projected` 或 `Lon/Lat`。两个横向输入框会随模式表示 X/Z、Easting/Northing 或 Longitude/Latitude。
+2. 选择 `Auto Terrain Y` 时，高程由当前 `TerrainHeightProvider` 在地形高度网格上双线性采样；选择 `Manual Y/Elevation` 时可填写局部 Y 或绝对投影高程。
+3. 可直接填写数值，也可按 `Pick From Map` 后单击当前地形。拾取只射线检测活动地形，不会误选建筑、塔或调试层；结果同时更新输入、坐标标记和三套坐标读数。
+4. 按 `Preview` 查看半透明预览。预览不会新增资产、碰撞体或保存状态；绿色表示通过，红色表示不可放置。
+5. 按 `Deploy` 正式部署。系统依旧经过现有 `PlacementValidator`，检查地形边界、有效支撑、水域、Restrict、坡度和资产碰撞；失败会显示明确原因。
+
+面板的调试开关可分别显示 `Coordinate Marker`、`Local Origin`、`Terrain Bounds`、`World Axes` 和 `100 m Grid`。它们只帮助核对坐标，不参与导航、语义或物理。切换地形时，坐标服务、拾取目标、CRS、原点、边界和面板输入会一起重置，避免旧地形坐标被误用。
+
+`Export Assets` 现在导出一个对象，而不只是数组：
+
+```json
+{
+  "coordinateReference": {
+    "projectedCRS": "EPSG:32613",
+    "units": "meters",
+    "coordinateConvention": { "x": "east", "y": "up", "z": "south" },
+    "localOrigin": { "easting": 343380.51, "northing": 4339223.20, "elevation": 2376.56 },
+    "verticalScale": 1,
+    "localBounds": {}
+  },
+  "assets": []
+}
+```
+
+具体值来自当前活动地形；仅 Local 地形的投影字段为空。加载逻辑同时兼容旧的纯资产数组和新包装格式。实现与验收细节见 [V0.6-A 坐标与资产放置交付说明](V06A_COORDINATE_ASSET_PLACEMENT.md)。
+
+### 可见性矩阵与最短路径全可达图（V0.6-B）
+
+`Visibility & Reachability` 是独立可拖动面板，和坐标工具共用同一个 `TerrainPicker` 与局部米制坐标。所有点都必须由当前活动地形表面拾取；建筑、道路、资产和调试图元不会成为点击基础面。短按添加点，拖动视角不会误选；`Esc` 停止选点，选点时 `Backspace` 撤销当前类型最后一点。
+
+可见性分析步骤：
+
+1. 填写 `Observer Count` 与 `Target Count`，并设置两类点的高度。默认都是 1.50 m，但它们是传入算法的配置值，不是算法内部常量；`Ray Epsilon` 默认 0.01 m。
+2. 按 `Select Observers`，在地形上选择 O1、O2……达到数量后自动停止；点错可按该行 `Undo` 或 `Clear`。再用相同步骤选择 T1、T2……。
+3. 按 `Compute Visibility`。算法从地面点加 Observer 高度发射到目标地面点加 Target 高度的射线，**只把当前地形的建筑网格当作遮挡物**；地形、道路、树、资产和车辆当前都不遮挡。
+4. 矩阵行是 Observer，列是 Target；`1` 表示没有建筑遮挡，`0` 表示射线在目标之前击中建筑。场景中实线/虚线及 `VISIBLE`/`BLOCKED` 标签用于检查每一对点。
+5. 可导出 JSON 或 CSV；JSON 还包含点、配置、距离和命中建筑信息。改变点位后旧结果自动失效，`Clear Result` 只清结果和射线，不删除点。
+
+可达图步骤：
+
+1. 先输入 `Node Count = N` 和 `Max Nav Snap`。按 `Select Graph Nodes` 后选择 P1…PN；如果点击处到最近可导航位置超过阈值，会报告 `NO_NEARBY_NAVMESH`，不会远距离偷偷吸附。
+2. 每个节点同时保留原始地形点、吸附后的导航点与吸附距离。达到 N 个点后自动结束选点。
+3. 按 `Build Full Graph`。系统只计算每一对 `i < j`，因此总任务数为 `N(N-1)/2`；进度显示已完成 pair，可按 `Cancel` 中止。
+4. Pathfinder 同时检查当前可用的 Recast 与三维几何代价 A* 候选。边 cost 是候选中**实际折线路径长度最短**者，单位米，不是端点直线距离，也不是路点数量。边保留完整 shortest-path 几何，地图绘制真实路径和长度。
+5. 结果是无向的完整加权可达图：所有可达 pair 都保留，不可达 pair 没有边。邻接矩阵对称，主对角为 0；cost matrix 对称、主对角为 0、不可达为 `null`（界面显示 `∞`）。本版本明确**不做 MST**，不会因为边 cost 较高而删除合法边。
+6. JSON 包含节点、边、真实路径、邻接矩阵和 cost matrix；CSV 分 metadata、nodes、edges、adjacency matrix、cost matrix 五段导出。`Clear`/`Undo` 可重选节点，`Clear Result` 清图结果。
+
+切换或重新加载地形时，三类点、矩阵、图、射线与路径调试线会全部清空，并换用新地形的 BuildingLayer、NavMesh 和 Pathfinder。地形编辑会清除全部空间分析状态；禁区、资产或导航发生变化时，旧可达图会被清除，避免展示失效路径。更详细的数据结构和验收记录见 [V0.6-B 可见性与可达图交付说明](V06B_VISIBILITY_REACHABILITY_GRAPH.md)。
+
 ## 3. 地形：选择、识别、重新加载
 
 `Current Terrain` 选项由 [manifest.json](public/assets/maps/terrain-demo/manifest.json) 自动生成。当前清单包含：
@@ -58,10 +121,6 @@ npm run dev
 | --- | --- | --- |
 | `terrain-01` | Coastal Terrain | `source/terrain1.glb` |
 | `terrain-02` | Valley Terrain | `source/terrain2.glb` |
-| `terrain-03` | Extended Terrain | `source/terrain3.glb` |
-| `terrain-04` | DEM Terrain | `source/terrain4.glb`，声明 Z-up 与比例换算 |
-| `synthetic-gis-demo` | synthetic-gis-demo | 已生成的 GIS 地形包 |
-| `ny-demo` | ny-demo | 已生成的 GIS 地形包 |
 | `aspen_dem` | Aspen DEM + OSM | GIS DEM 加结构化 OSM 建筑/道路图层 |
 
 切换时先建立新地形的渲染、物理、导航和 Agent，再替换旧运行时；加载失败通常保留原地形。每张地形的编辑和资产状态在**当前浏览器页面会话**中分别保留，刷新或关闭页面后未导出的修改会丢失。
@@ -122,7 +181,7 @@ npm run dev
 | `Colliders` | Rapier 世界的调试线框，包括 heightfield、角色和资产碰撞体。 | 与源 GLB 的细节网格可以不同；这是实际仿真碰撞的可视化，开关不改变碰撞。 |
 | `Buildings` | OSM 建筑挤出网格。 | 只控制显示；建筑语义与物理碰撞仍然生效。 |
 | `Roads` | 具有真实宽度并贴地的 OSM 道路带。 | 只控制显示；道路语义仍然保留。 |
-| `Building Collision` | 建筑简化碰撞盒线框。 | 用于检查碰撞近似，不会启停真实碰撞。 |
+| `Building Collision` | 与可见挤出建筑相同的 Rapier trimesh 线框，默认关闭。 | 用于核对实体碰撞边界；开关只显示/隐藏线框，不会启停真实碰撞。 |
 | `Road Width Debug` | 道路左右边界。 | 用于核对 `highway`/车道宽度映射。 |
 | `Terrain Height Samples` | 建筑地形采样点与道路采样点。 | 用于排查局部坐标、高度或南北翻转问题。 |
 

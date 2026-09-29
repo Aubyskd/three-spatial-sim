@@ -1,5 +1,6 @@
 import type { RuntimeObservation } from '../algorithm/Observation';
 import type { DetectedTerrainMesh, TerrainDescriptor, TerrainEditTool, TerrainRuntimeState } from '../terrain/TerrainTypes';
+import { FloatingPanel } from './FloatingPanel';
 
 export interface V02PanelActions {
   switchTerrain(id: string): void;
@@ -44,15 +45,16 @@ export class V02ControlPanel {
   constructor(host: HTMLElement, terrains: readonly TerrainDescriptor[], actions: V02PanelActions) {
     this.root.className = 'control-panel v02-panel';
     this.root.innerHTML = `
-      <div class="panel-heading"><div><span class="eyebrow">SPATIAL LAB / V0.3</span><h1>算法空间仿真</h1></div><span class="live-dot">LIVE</span></div>
+      <div class="panel-heading"><div><span class="eyebrow">SPATIAL LAB / V0.6-A</span><h1>算法空间仿真</h1></div><span class="live-dot">LIVE</span></div>
       <section><h2>Simulation</h2><div class="metrics compact">${this.metric('fps','FPS')}${this.metric('agent','AGENT')}${this.metric('target','TARGET')}${this.metric('path','PATH')}</div><div class="row"><button data-action="reset" class="primary">Reset Simulation</button><button data-action="deploy-agent" aria-pressed="false">重新部署胶囊体</button></div><div class="row"><button data-action="focus-agent">定位胶囊体</button></div></section>
       <section><h2>画面与胶囊体</h2><label class="size-control"><span>画幅大小 <small>相机视角 · °</small></span><span class="size-inputs"><input data-control="frame-range" type="range" min="25" max="90" step="1" value="52" aria-label="画幅大小滑块"><input data-control="frame-number" type="number" min="25" max="90" step="1" value="52" aria-label="画幅大小数值"></span></label><label class="size-control"><span>胶囊大小 <small>高度 · 米</small></span><span class="size-inputs"><input data-control="capsule-range" type="range" min="0.9" max="5.4" step="0.1" value="1.8" aria-label="胶囊大小滑块"><input data-control="capsule-number" type="number" min="0.9" max="5.4" step="0.1" value="1.8" aria-label="胶囊大小数值"></span></label></section>
       <section><h2>Terrain</h2><label class="field"><span>Current Terrain</span><select data-control="terrain">${terrains.map((terrain) => `<option value="${terrain.id}">${terrain.name}</option>`).join('')}</select></label><div class="row"><button data-action="reload">Reload Terrain</button><button data-action="focus">Focus Terrain</button></div><div class="terrain-info"><span data-value="terrainInfo">—</span><span data-value="bounds">—</span><span data-value="height">—</span><span data-value="revision">—</span><span data-value="dirty">—</span><span data-value="meshes">—</span></div><details class="mesh-mapping"><summary>Detected Meshes / Roles</summary><div></div></details></section>
       <section><h2>Edit Terrain</h2><div class="segmented"><button data-tool="raise">Raise</button><button data-tool="lower">Lower</button><button data-tool="flatten">Flatten</button><button data-tool="off">Off</button></div><label class="range">Radius <input data-control="radius" type="range" min="1" max="12" step="0.5" value="3"><output>3</output></label><label class="range">Strength <input data-control="strength" type="range" min="0.05" max="1.5" step="0.05" value="0.45"><output>0.45</output></label><div class="row"><button data-action="exportTerrain">Export Terrain</button><button data-action="exportSemantic">Export Semantic</button></div></section>
       <section><h2>Assets & Regions</h2><div class="row"><button data-action="tower">Place Signal Tower</button><button data-action="region" aria-pressed="false">Add Restricted</button></div><div class="row" data-region-controls hidden><button data-action="undoRegion">撤销上一点</button><button data-action="cancelRegion">取消选区</button></div><div class="row"><button data-action="clearRegion">Clear Regions</button><button data-action="exportAssets">Export Assets</button></div></section>
-      <section><h2>Debug</h2><div class="toggle-list">${this.toggle('nav','NavMesh')}${this.toggle('physics','Colliders')}${this.toggle('semantic','Semantic',true)}${this.toggle('buildings','Buildings',true)}${this.toggle('roads','Roads',true)}${this.toggle('buildingCollision','Building Collision',true)}${this.toggle('roadWidth','Road Width Debug')}${this.toggle('terrainSamples','Terrain Height Samples')}</div></section>
+      <section><h2>Debug</h2><div class="toggle-list">${this.toggle('nav','NavMesh')}${this.toggle('physics','Colliders')}${this.toggle('semantic','Semantic',true)}${this.toggle('buildings','Buildings',true)}${this.toggle('roads','Roads',true)}${this.toggle('buildingCollision','Building Collision')}${this.toggle('roadWidth','Road Width Debug')}${this.toggle('terrainSamples','Terrain Height Samples')}</div></section>
       <div class="loading-stage" aria-live="polite"></div><div class="notice" aria-live="polite"></div>`;
     host.append(this.root);
+    new FloatingPanel(this.root, { id: 'simulation', title: '算法空间仿真', icon: '⚙' });
     this.terrainSelect = this.root.querySelector('[data-control="terrain"]') as HTMLSelectElement;
     this.loading = this.root.querySelector('.loading-stage') as HTMLElement;
     this.notice = this.root.querySelector('.notice') as HTMLElement;

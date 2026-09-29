@@ -3,6 +3,7 @@ import type { Environment } from '../algorithm/Environment';
 import type { ExperimentConfig } from '../algorithm/experiment/ExperimentConfig';
 import { ExperimentRunner } from '../algorithm/experiment/ExperimentRunner';
 import type { TerrainDescriptor } from '../terrain/TerrainTypes';
+import { FloatingPanel } from './FloatingPanel';
 
 export class ExperimentPanel {
   readonly runner: ExperimentRunner;
@@ -36,6 +37,7 @@ export class ExperimentPanel {
       </div><div class="row"><button data-exp-action="apply" disabled>Apply Best Solution</button><button data-exp-action="json" disabled>Export JSON</button></div><button data-exp-action="csv" class="wide" disabled>Export CSV</button></section>
       <div class="experiment-status" data-exp-status>IDLE</div>`;
     host.append(this.root);
+    new FloatingPanel(this.root, { id: 'experiment', title: '空间优化实验', icon: 'Σ' });
     const active = environment.getActiveTerrainId(); if (active) this.select('terrain').value = active;
     this.runButton = this.button('run'); this.stopButton = this.button('stop'); this.applyButton = this.button('apply'); this.jsonButton = this.button('json'); this.csvButton = this.button('csv'); this.status = this.root.querySelector('[data-exp-status]') as HTMLElement;
     this.runButton.onclick = () => void this.run(); this.stopButton.onclick = () => this.runner.stop(); this.applyButton.onclick = () => void this.apply();

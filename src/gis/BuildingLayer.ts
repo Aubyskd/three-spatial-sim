@@ -1,34 +1,34 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createBuildingMaterial } from './BuildingMaterial';
-import type { BuildingCollection, BuildingColliderBox, LocalBuildingFeature } from './VectorFeatureTypes';
+import type { BuildingCollection, BuildingColliderMesh, LocalBuildingFeature } from './VectorFeatureTypes';
 
 export class BuildingLayer {
   readonly root = new THREE.Group();
   private readonly surface = new THREE.Group();
-  private readonly footprintDebug = new THREE.Group();
   private readonly collisionDebug = new THREE.Group();
   private readonly heightSamples = new THREE.Group();
-  private readonly boxes: BuildingColliderBox[];
+  private collisionMesh?: BuildingColliderMesh;
 
   constructor(readonly collection: BuildingCollection) {
     this.root.name = 'osm-buildings';
     this.surface.name = 'osm-building-surfaces';
-    this.footprintDebug.name = 'osm-building-footprints';
     this.collisionDebug.name = 'osm-building-collision-debug';
     this.heightSamples.name = 'osm-building-height-samples';
-    this.root.add(this.surface, this.footprintDebug, this.collisionDebug, this.heightSamples);
-    this.boxes = collection.features.map(buildingColliderBox);
+    this.root.add(this.surface, this.collisionDebug, this.heightSamples);
     this.buildSurface();
     this.buildDebug();
-    this.setCollisionDebugVisible(true);
+    this.setCollisionDebugVisible(false);
     this.setHeightSamplesVisible(false);
   }
 
-  setVisible(visible: boolean): void { this.surface.visible = visible; this.footprintDebug.visible = visible; }
+  setVisible(visible: boolean): void { this.surface.visible = visible; }
   setCollisionDebugVisible(visible: boolean): void { this.collisionDebug.visible = visible; }
   setHeightSamplesVisible(visible: boolean): void { this.heightSamples.visible = visible; }
-  getCollisionBoxes(): readonly BuildingColliderBox[] { return this.boxes; }
+  getCollisionMesh(): BuildingColliderMesh | undefined { return this.collisionMesh; }
+  /** Exact rendered building geometry; the visibility analyzer must not raycast the whole scene. */
+  getVisibilityOccluders(): THREE.Object3D[] { return [...this.surface.children]; }
+  getPhysicalSurfaces(): THREE.Object3D[] { return [...this.surface.children]; }
 
   dispose(): void {
     this.root.traverse((object) => {
@@ -59,41 +59,26 @@ export class BuildingLayer {
     const mesh = new THREE.Mesh(merged, createBuildingMaterial());
     mesh.name = 'osm-buildings-merged'; mesh.castShadow = true; mesh.receiveShadow = true;
     this.surface.add(mesh);
+    this.collisionMesh = collisionMeshFromGeometry(merged);
+    const collisionView = new THREE.Mesh(merged, new THREE.MeshBasicMaterial({
+      color: 0xc67878, wireframe: true, transparent: true, opacity: 0.42, depthWrite: false,
+    }));
+    collisionView.name = 'osm-building-collision-mesh';
+    collisionView.renderOrder = 4;
+    this.collisionDebug.add(collisionView);
   }
 
   private buildDebug(): void {
-    const footprintPositions: number[] = [];
     const samplePositions: number[] = [];
     for (const feature of this.collection.features) {
       feature.rings.forEach((ring, ringIndex) => {
-        for (let index = 1; index < ring.length; index += 1) {
-          footprintPositions.push(ring[index - 1][0], feature.baseHeight + 0.08, ring[index - 1][1],
-            ring[index][0], feature.baseHeight + 0.08, ring[index][1]);
-        }
         ring.forEach(([x, z], index) => samplePositions.push(x, feature.terrainHeights?.[ringIndex]?.[index] ?? feature.baseHeight, z));
       });
-    }
-    if (footprintPositions.length) {
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute(footprintPositions, 3));
-      this.footprintDebug.add(new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: 0xb58f82, transparent: true, opacity: 0.65 })));
     }
     if (samplePositions.length) {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(samplePositions, 3));
       this.heightSamples.add(new THREE.Points(geometry, new THREE.PointsMaterial({ color: 0x4f8b72, size: 1.2, sizeAttenuation: true })));
-    }
-    if (this.boxes.length) {
-      const geometry = new THREE.BoxGeometry(1, 1, 1);
-      const material = new THREE.MeshBasicMaterial({ color: 0xc67878, wireframe: true, transparent: true, opacity: 0.28, depthWrite: false });
-      const mesh = new THREE.InstancedMesh(geometry, material, this.boxes.length);
-      const matrix = new THREE.Matrix4();
-      this.boxes.forEach((box, index) => {
-        matrix.compose(new THREE.Vector3(box.center.x, box.center.y, box.center.z), new THREE.Quaternion(), new THREE.Vector3(box.size.x, box.size.y, box.size.z));
-        mesh.setMatrixAt(index, matrix);
-      });
-      mesh.instanceMatrix.needsUpdate = true;
-      this.collisionDebug.add(mesh);
     }
   }
 }
@@ -117,13 +102,18 @@ function shapeFromFeature(feature: LocalBuildingFeature): THREE.Shape | null {
   return shape;
 }
 
-function buildingColliderBox(feature: LocalBuildingFeature): BuildingColliderBox {
-  const outer = feature.rings[0];
-  const xs = outer.map((point) => point[0]); const zs = outer.map((point) => point[1]);
-  const minX = Math.min(...xs); const maxX = Math.max(...xs); const minZ = Math.min(...zs); const maxZ = Math.max(...zs);
-  return {
-    id: feature.id,
-    center: { x: (minX + maxX) / 2, y: feature.baseHeight + feature.extrudeHeight / 2, z: (minZ + maxZ) / 2 },
-    size: { x: Math.max(0.2, maxX - minX), y: feature.extrudeHeight, z: Math.max(0.2, maxZ - minZ) },
-  };
+function collisionMeshFromGeometry(geometry: THREE.BufferGeometry): BuildingColliderMesh {
+  const position = geometry.getAttribute('position');
+  const vertices = new Float32Array(position.count * 3);
+  for (let index = 0; index < position.count; index += 1) {
+    vertices[index * 3] = position.getX(index);
+    vertices[index * 3 + 1] = position.getY(index);
+    vertices[index * 3 + 2] = position.getZ(index);
+  }
+  const sourceIndex = geometry.getIndex();
+  const indices = sourceIndex
+    ? Uint32Array.from(sourceIndex.array)
+    : Uint32Array.from({ length: position.count }, (_, index) => index);
+  if (indices.length % 3 !== 0) throw new Error('Building collider geometry does not contain complete triangles.');
+  return { vertices, indices };
 }

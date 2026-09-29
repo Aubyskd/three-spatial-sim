@@ -101,7 +101,8 @@ export class TerrainManager<Runtime> {
     terrainData ??= await this.importer.import(descriptor, (stage) => this.lifecycle.setStage(stage), meshRoles);
     const semantic = await this.tryLoadJson<SemanticRegionData[]>(descriptor.semantic);
     if (semantic?.length) terrainData.semanticRegions = terrainData.waterGrid ? [...semantic, ...terrainData.waterRegions] : semantic;
-    const assets = (await this.tryLoadJson<PlacedAsset[]>(descriptor.assets)) ?? [];
+    const assetData = await this.tryLoadJson<PlacedAsset[] | { assets: PlacedAsset[] }>(descriptor.assets);
+    const assets = Array.isArray(assetData) ? assetData : assetData?.assets ?? [];
     return { terrainId: descriptor.id, terrainData: cloneTerrainData(terrainData), semanticOverrides: [], placedAssets: assets.map((asset) => ({ ...asset, terrainId: descriptor.id })), terrainDirty: false, semanticDirty: false, assetsDirty: false, meshRoles: Object.fromEntries(terrainData.detectedMeshes.map((mesh) => [mesh.name, mesh.role])) };
   }
 

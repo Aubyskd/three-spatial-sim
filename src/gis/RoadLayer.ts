@@ -18,6 +18,7 @@ export class RoadLayer {
   setVisible(visible: boolean): void { this.surface.visible = visible; }
   setWidthDebugVisible(visible: boolean): void { this.widthDebug.visible = visible; }
   setHeightSamplesVisible(visible: boolean): void { this.heightSamples.visible = visible; }
+  getPhysicalSurfaces(): THREE.Object3D[] { return [...this.surface.children]; }
 
   dispose(): void {
     this.root.traverse((object) => {

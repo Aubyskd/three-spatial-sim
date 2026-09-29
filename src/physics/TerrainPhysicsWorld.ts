@@ -1,5 +1,5 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import type { BuildingColliderBox } from '../gis/VectorFeatureTypes';
+import type { BuildingColliderMesh } from '../gis/VectorFeatureTypes';
 import type { PlacedAsset, TerrainData } from '../terrain/TerrainTypes';
 
 export class TerrainPhysicsWorld {
@@ -8,6 +8,7 @@ export class TerrainPhysicsWorld {
   private terrainBody?: RAPIER.RigidBody;
   private readonly assetBodies = new Map<string, RAPIER.RigidBody>();
   private buildingBody?: RAPIER.RigidBody;
+  private buildingCollider?: RAPIER.Collider;
 
   private constructor() { this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 }); }
 
@@ -50,16 +51,28 @@ export class TerrainPhysicsWorld {
   }
 
   restoreAssets(assets: PlacedAsset[]): void { assets.filter((asset) => !asset.invalidPlacement).forEach((asset) => this.addSignalTower(asset)); }
-  setBuildingColliders(boxes: readonly BuildingColliderBox[]): void {
+  setBuildingColliderMesh(mesh?: BuildingColliderMesh): void {
     if (this.buildingBody) this.world.removeRigidBody(this.buildingBody);
     this.buildingBody = undefined;
-    if (!boxes.length) return;
+    this.buildingCollider = undefined;
+    if (!mesh || mesh.vertices.length === 0 || mesh.indices.length === 0) return;
     const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
-    for (const box of boxes) {
-      this.world.createCollider(RAPIER.ColliderDesc.cuboid(box.size.x / 2, box.size.y / 2, box.size.z / 2)
-        .setTranslation(box.center.x, box.center.y, box.center.z).setFriction(0.9), body);
-    }
+    this.buildingCollider = this.world.createCollider(RAPIER.ColliderDesc.trimesh(mesh.vertices, mesh.indices).setFriction(0.9), body);
     this.buildingBody = body;
+  }
+  hasBuildingClearance(position: { x: number; y: number; z: number }, radius = 0.25): boolean {
+    if (!this.buildingCollider) return true;
+    let overlap = false;
+    const shape = new RAPIER.Ball(Math.max(0.01, radius));
+    this.world.intersectionsWithShape(
+      { x: position.x, y: position.y + radius, z: position.z },
+      { x: 0, y: 0, z: 0, w: 1 },
+      shape,
+      (collider) => { if (collider.handle === this.buildingCollider?.handle) { overlap = true; return false; } return true; },
+      undefined, undefined, undefined, undefined,
+      (collider) => collider.handle === this.buildingCollider?.handle,
+    );
+    return !overlap;
   }
   step(dt: number): void { this.world.timestep = dt; this.world.step(); }
   debugGeometry(): { vertices: Float32Array; colors: Float32Array } { return this.world.debugRender(); }

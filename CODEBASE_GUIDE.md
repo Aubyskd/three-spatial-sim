@@ -1,6 +1,6 @@
 # Three Spatial Sim 当前版本功能与代码导读
 
-本文以当前仓库源码为准，面向第一次接触项目的开发者。界面仍标为 **V0.3 Algorithm Environment**，但仓库还包含 V0.4 GeoTIFF 导入流程及后续的多边形禁区、胶囊体重部署、尺寸调节和路径避障改进；`package.json` 的 `version` 仍是 `0.1.0`，它是 npm 包版本，不代表界面功能版本。面向使用者的逐项操作请先看 [中文使用手册](README.md)。
+本文以当前仓库源码为准，面向第一次接触项目的开发者。当前界面功能版本为 **V0.6-B Visibility Matrix + Shortest-Path Reachability Graph**，并包含 V0.6-A 坐标放置、V0.5 OSM 建筑/道路、V0.4 GeoTIFF 导入、算法环境、多边形禁区、胶囊体重部署、尺寸调节和路径避障改进；`package.json` 的 `version` 仍是 `0.1.0`，它是 npm 包版本，不代表界面功能版本。面向使用者的逐项操作请先看 [中文使用手册](README.md)。
 
 ## 1. 先用一句话理解项目
 
@@ -18,7 +18,7 @@
 
 | 能力 | 当前实现与入口 |
 | --- | --- |
-| 多地形 | 从 `public/assets/maps/terrain-demo/manifest.json` 发现当前 6 张地形：4 张源 GLB 与 2 张 GIS 转换地形；右侧面板切换、聚焦、重新加载。 |
+| 多地形 | 从 `public/assets/maps/terrain-demo/manifest.json` 发现当前 3 张地形：Coastal、Valley 与 Aspen DEM + OSM；右侧面板切换、聚焦、重新加载。 |
 | GLB 转地形数据 | 识别 land/water mesh，以射线采样为高度网格；记录 `sampleCoverage` 区分真正命中的地面和边界补空。 |
 | 地形编辑 | Raise、Lower、Flatten 笔刷；编辑时更新可视网格，结束笔画后重建 Rapier heightfield 和导航数据，递增 terrain revision。 |
 | 水面与光照 | 独立 water mesh 按实际覆盖网格渲染；只有带水域命名或显式配置的单网格 GLB 才推断低地水体。地形编辑后水面会刷新。场景有环境光、主光和补光。 |
@@ -26,6 +26,9 @@
 | 胶囊体操作 | 可重新部署到合法地块、聚焦胶囊体，并通过滑块/数值框同步调整相机 FOV 与胶囊视觉及碰撞尺寸。 |
 | 语义与禁区 | 自动语义区加人工禁区；逐点创建并闭合多边形 Restrict、撤销点位、取消或清除，覆盖层贴合当前地形；禁区影响终点及穿越路径的判断。 |
 | 手动塔站部署 | 右侧面板提供放置预览、位置验证、真实视觉资产及 Rapier 碰撞体，可导出资产；代码 API 可移除资产。 |
+| 坐标检查与放置 | 实时查看 Local/Projected/WGS84 坐标，复制坐标，按 Local/Projected/LonLat 输入或地图拾取位置，选择自动/手动 Y，预览并通过原有校验器部署资产。 |
+| 建筑可见性矩阵 | 指定 Observer/Target 数量与高度，在活动地形选点；只射线检测当前 BuildingLayer，输出 0/1 矩阵、pair 详情、调试射线及 JSON/CSV。 |
+| 最短路径可达图 | 指定 N 和导航吸附阈值，在地形选择 graph nodes；对所有 `i < j` pair 求最短可行路径，输出完整无向加权图、邻接/cost 矩阵与 JSON/CSV，不做 MST。 |
 | 标准算法环境 | `reset / observe / step / evaluate / getMetrics / getState` 等 API，支持放置、移除、移动和 NO_OP 动作，返回结构化约束和奖励。 |
 | 塔站优化 | 以 64×64 采样网格计算覆盖、重叠、成本和违规数；按配置权重计算 score。 |
 | 实验 | 左侧面板设置地形、Seed、塔数、迭代次数和渲染模式，运行/停止 Random Search，应用最佳方案，导出 JSON/CSV。 |
@@ -33,7 +36,7 @@
 | GIS 导入 | Python 工具对 GeoTIFF 做 CRS 检查、米制投影、等比例重采样、地形包验证与 manifest 注册；有 `terrain.json` 时运行时直接读取它。 |
 | 自检 | 带 `?algorithmSelfTest=1` 启动时执行算法 API 验收并显示报告；正常启动不会运行它。 |
 
-当前默认地形 ID 是 `terrain-01`（Coastal Terrain）；清单还包含 `terrain-02`、`terrain-03`、`terrain-04`、`synthetic-gis-demo` 和 `ny-demo`。文档或旧提示词里的 `lake` **不是**当前 manifest 中的 ID。实际列表始终以 manifest 为准。
+当前默认地形 ID 是 `terrain-01`（Coastal Terrain）；清单还包含 `terrain-02`（Valley Terrain）和 `aspen_dem`（Aspen DEM + OSM）。文档或旧提示词里的 `lake` **不是**当前 manifest 中的 ID。实际列表始终以 manifest 为准。
 
 ## 3. 如何运行，先看哪里
 
@@ -47,7 +50,7 @@ npm run build
 - 当前默认仿真入口：`MultiTerrainSimulation.create()`；不要误以为旧的 `src/core/Simulation.ts` 仍是主入口。
 - 页面右侧：地形、Agent、FOV/胶囊尺寸、编辑、资产、禁区和 Debug。
 - 页面左侧：V0.3 Experiment。
-- 项目坐标：右手坐标系，Y 向上，X/Z 是地面，1 Three.js unit 对应约 1 米。
+- 项目坐标：右手坐标系，+X 向东、+Y 向上、+Z 向南，严格保持 1 Three.js world unit = 1 米。
 
 如果只想先读懂全局，推荐顺序：
 
@@ -165,7 +168,51 @@ GeoJSON → vector-inspect / vector-convert
   → TerrainNavMeshManager / Pathfinder 阻挡建筑、优先道路语义
 ```
 
-源 OSM 属性和 source feature ID 保留在结构化 JSON 中；没有烘焙进 terrain GLB。前端建筑用合并后的 `ExtrudeGeometry` 显示，洞作为 `Shape.holes`；道路根据宽度生成 ribbon mesh。语义索引使用空间桶避免每次查询遍历数千个要素，建筑碰撞采用固定刚体上的简化 AABB 以控制成本。完整验收数据见 [V0.5 交付说明](V05_OSM_BUILDINGS_ROADS.md)。
+源 OSM 属性和 source feature ID 保留在结构化 JSON 中；没有烘焙进 terrain GLB。前端建筑用合并后的 `ExtrudeGeometry` 显示，洞作为 `Shape.holes`；同一份合并三角网格直接生成 Rapier 静态 trimesh，因此凹形轮廓和洞不会被外接框扩大。道路根据宽度生成 ribbon mesh。语义索引使用空间桶避免每次查询遍历数千个要素。完整验收数据见 [V0.5 交付说明](V05_OSM_BUILDINGS_ROADS.md)。
+
+### 4.8 坐标检查与按坐标放置链路
+
+```text
+活动地形 metadata / local bounds
+  → CoordinateService.configure()：建立 Local ↔ Projected ↔ WGS84 变换
+  → TerrainPicker：只对活动地形 Mesh 做射线拾取
+  → CoordinatePanel：实时读数、复制、输入、预览、部署和调试开关
+  → CoordinateAssetPlacer.resolve()
+       ├─ Local / Projected / Geographic 输入统一转成 Local
+       ├─ Auto Y：TerrainHeightProvider 双线性采样
+       └─ Manual Y：局部 Y 或绝对投影高程换算
+  → PlacementValidator：边界、支撑、水域、禁区、坡度和碰撞校验
+  → Preview：只创建临时 Ghost；Deploy：AssetPlacementManager.placeAt()
+```
+
+坐标轴契约是 `+X east / +Y up / +Z south`，局部和投影平面单位都为米。Northing 增大时局部 Z 减小，即 `localZ = originNorthing - northing`。Projected 与 WGS84 转换由 `proj4` 完成，转换器按活动 CRS 缓存；生产代码不写死 Aspen 的 CRS 或原点。没有 GIS metadata 的 GLB 会进入 local-only 模式，Projected/Geographic UI 和 API 会明确拒绝，而不是猜坐标。
+
+地形切换时 `MultiTerrainSimulation.commitRuntime()` 会同时重新配置服务、拾取目标、调试边界和输入面板，并清除旧预览/坐标点。资产导出包含 `coordinateReference` 与 `assets`；`TerrainManager` 仍能读取旧版纯数组，避免破坏已有数据。
+
+### 4.9 可见性矩阵与最短路径全可达图链路
+
+```text
+SpatialAnalysisPanel 指定数量/高度/吸附阈值
+  → MultiTerrainSimulation 进入唯一 SPATIAL_POINT_SELECTION 模式
+  → TerrainPicker 只拾取活动 terrain surface
+  → PointSelectionManager 生成 O/T/P SpatialPoint 与标签 marker
+  ├─ VisibilityAnalyzer
+  │    → Observer/Target 地面 Y + 配置高度
+  │    → 仅 raycast BuildingLayer.getVisibilityOccluders()
+  │    → VisibilityMatrix（row=observer，column=target）
+  └─ ReachabilityGraphBuilder
+       → TerrainNavMeshManager.findNearestWalkablePoint() 有阈值吸附
+       → 对每对 i<j 调 Pathfinder.findPathCandidates()
+       → GraphPathCost 以三维折线米数选择最短路径
+       → 所有可达 pair 组成 undirected full graph（NO MST）
+       → adjacency/cost matrix + shortest-path geometry
+```
+
+`SpatialPoint.position` 始终是地形表面的 Local World XYZ，约定 `+X east / +Y up / +Z south / 1 unit = 1 m`。Observer/Target 不依赖导航；Graph Node 才要求阈值范围内存在导航点，并同时保存 `position`、`navigationPosition` 和 `snapDistance`。
+
+`VisibilityAnalyzer` 只持有当前 BuildingLayer 明确交给它的对象数组，不遍历 `scene.children`。默认 1.5 m 与 0.01 m 定义在 `DEFAULT_VISIBILITY_CONFIG`，UI 每次计算都把当前值传入。`ReachabilityGraphBuilder` 只保留每对候选路径中三维折线长度最短者，但保留所有可达 pair 的边；矩阵对称，不可达 cost 使用可 JSON 序列化的 `null`。
+
+图构建按批次让出主线程，汇报 `completedPairs / totalPairs` 并接受 `AbortSignal`。地形切换清空点和全部结果；地形、禁区、资产或导航变化会使相关旧结果失效，下一次构建始终从当前 runtime 获取 Pathfinder 与 NavMesh。
 
 ## 5. 目录和关键文件职责
 
@@ -179,12 +226,16 @@ GeoJSON → vector-inspect / vector-convert
 | `README.md` | 当前中文使用手册：每个界面功能、操作流程、数据保存及排错。 |
 | `CODEBASE_GUIDE.md` | 本文件：模块职责、调用链、算法 API 和阅读顺序。 |
 | `V05_OSM_BUILDINGS_ROADS.md` | V0.5 的坐标、转换、运行时接入、目录与实际验收报告。 |
+| `V06A_COORDINATE_ASSET_PLACEMENT.md` | V0.6-A 坐标服务、拾取、坐标放置、导出格式、测试与验收报告。 |
+| `V06B_VISIBILITY_REACHABILITY_GRAPH.md` | V0.6-B SpatialPoint、建筑可见性矩阵、最短路径全可达图、导出、测试与验收报告。 |
 | `tools/GIS_GeoTIFF_地形转换与平台接入步骤.md` | GeoTIFF 到平台地形包的中文操作实例。 |
 | `tools/gis-converter/` | Python DEM 与 OSM/GeoJSON 转换 CLI、依赖、转换/验证模块和 pytest。 |
 | `tools/gis-converter/gis_converter/`、`tools/gis-converter/tests/`、`tools/gis-converter/input/`、`tools/gis-converter/output/` | 分别为转换实现、Python 测试、用户输入 GeoTIFF 和可选的本地工具输出；平台地形包通常输出到下述 `generated/`。 |
 | `tests/terrain-regression.test.ts` | TypeScript 地形、水体、禁区、导航与碰撞回归测试。 |
+| `tests/coordinate-regression.test.ts` | Local/Projected/WGS84 往返、拾取、边界、自动/手动 Y、预览和三种坐标部署回归测试。 |
+| `tests/spatial-analysis-regression.test.ts` | 建筑可见性、高度配置、矩阵方向、三维路径长度、pair 数、对称矩阵、吸附错误、多候选最短路径和 NO MST 回归测试。 |
 | `public/assets/maps/terrain-demo/manifest.json` | 地形目录：ID、GLB 路径、采样分辨率、缩放、可选语义和资产文件。 |
-| `public/assets/maps/terrain-demo/source/` | 四个源 GLB 文件。 |
+| `public/assets/maps/terrain-demo/source/` | Coastal 与 Valley 两个源 GLB 文件。 |
 | `public/assets/maps/terrain-demo/generated/` | GIS 转换产生的地形包；可含 `terrain.json`、`terrain.glb`、`metadata.json` 和 `processed/*.local.json`。 |
 | `public/assets/models/` | V0.1 普通场景对象的示例 GLB；不是当前多地形下拉框的来源。 |
 | `public/assets/maps/terrain-demo/data/` | 每张地形的可选语义/资产 JSON；当前示例文件为空数组。 |
@@ -221,7 +272,7 @@ GeoJSON → vector-inspect / vector-convert
 | --- | --- |
 | `VectorFeatureTypes.ts` | 校验建筑/道路集合，定义属性与几何类型，并转换为道路/障碍语义区域。 |
 | `TerrainHeightProvider.ts` | 与 Python 转换器一致的局部网格双线性高度采样。 |
-| `BuildingLayer.ts` | 将外环和洞转成 `Shape`/`ExtrudeGeometry`，合并渲染网格，并生成 footprint、碰撞盒和高度点调试层。 |
+| `BuildingLayer.ts` | 将外环和洞转成 `Shape`/`ExtrudeGeometry`，合并渲染网格，并从同一几何生成 trimesh 数据、实体碰撞线框和高度点调试层。 |
 | `RoadLayer.ts` | 根据中心线和真实宽度生成贴地 ribbon，附带宽度边界与采样点调试层。 |
 | `BuildingMaterial.ts`、`RoadMaterial.ts` | 低饱和马卡龙材质，集中管理图层外观。 |
 
@@ -239,7 +290,7 @@ GeoJSON → vector-inspect / vector-convert
 
 | 文件 | 作用 |
 | --- | --- |
-| `physics/TerrainPhysicsWorld.ts` | 当前多地形 Rapier World、heightfield、塔站碰撞体及 OSM 建筑简化静态碰撞体。 |
+| `physics/TerrainPhysicsWorld.ts` | 当前多地形 Rapier World、heightfield、塔站碰撞体及与 OSM 可见建筑一致的静态 trimesh 碰撞体。 |
 | `physics/CharacterController.ts` | Agent 角色碰撞/运动接口。 |
 | `physics/PhysicsWorld.ts`、`ColliderFactory.ts` | V0.1 地图和对象的物理实现。 |
 | `navigation/TerrainNavMeshManager.ts` | 当前地形导航采样、Recast 构建/查询及重建。 |
@@ -262,6 +313,29 @@ GeoJSON → vector-inspect / vector-convert
 | `assets/SignalTowerFactory.ts`、`GeneratedAssetFactory.ts` | 用 Three.js primitive 生成塔站的可视对象。 |
 | `assets/PlacementValidator.ts` | V0.2 手动部署的地形/坡度/语义/碰撞基础检查。 |
 | `assets/AssetPlacementManager.ts` | 正式资产放置、移动、删除、恢复，与视觉和 Rapier 同步。 |
+| `assets/CoordinateAssetPlacer.ts` | 解析 Local/Projected/Geographic 输入和 Auto/Manual Y；预览只读，部署复用 PlacementValidator 与 AssetPlacementManager。 |
+
+### `src/spatial/`：统一空间点、坐标和拾取
+
+| 文件 | 作用 |
+| --- | --- |
+| `spatial/CoordinateService.ts` | 坐标真值入口；管理活动 CRS/原点/边界，实现 Local、Projected、WGS84、Screen/Ray 的转换和导出引用。 |
+| `spatial/TerrainPicker.ts` | 复用 Raycaster，只与当前活动地形 Mesh 相交，输出世界/局部坐标。 |
+| `spatial/CoordinateDebugLayer.ts` | 坐标标记、局部原点、地形边界、世界轴和 100 m 网格；纯显示，不写入仿真状态。 |
+| `spatial/SpatialPoint.ts` | Observer、Target、Graph Node 共用的 Local World XYZ 数据结构、类型与选点模式。 |
+| `spatial/PointSelectionManager.ts` | 管理互斥选点模式、required count、O/T/P 编号、撤销/清空，以及不同形状并带文字标签的 marker。 |
+
+### `src/analysis/`：可见性与可达图
+
+| 文件 | 作用 |
+| --- | --- |
+| `analysis/VisibilityTypes.ts` | 可见性配置、1.5 m 默认高度、epsilon、pair/blocker 与矩阵结果类型。 |
+| `analysis/VisibilityAnalyzer.ts` | 复用 Raycaster/临时向量，只检测显式注册的建筑网格，计算单 pair 与全部 Observer×Target。 |
+| `analysis/VisibilityMatrix.ts` | 按 Observer 行、Target 列组装 0/1 矩阵并导出 CSV。 |
+| `analysis/GraphTypes.ts` | 原始/吸附节点、带 shortest-path geometry 的边、无向图、矩阵、进度和错误码。 |
+| `analysis/GraphPathCost.ts` | 计算三维折线总长并从多个有效候选中选 cost 最小者。 |
+| `analysis/ReachabilityGraphBuilder.ts` | 阈值吸附节点、仅遍历 `i < j`、调用当前 Pathfinder、生成完整可达边和对称矩阵，支持进度/取消/CSV。 |
+| `analysis/SpatialAnalysisDebugLayer.ts` | 显示 VISIBLE/BLOCKED 射线、遮挡点、导航吸附线、真实 shortest path 和米制 cost 标签。 |
 
 ### `src/algorithm/`：算法环境，不直接操作 UI
 
@@ -298,7 +372,10 @@ GeoJSON → vector-inspect / vector-convert
 
 | 文件 | 作用 |
 | --- | --- |
-| `ui/V02ControlPanel.ts` | 右侧当前控制面板；文件名保留 V0.2，但界面已显示 V0.3 标识。 |
+| `ui/V02ControlPanel.ts` | 右侧主控制面板；文件名为历史命名，界面功能标识已更新为 V0.6-A。 |
+| `ui/CoordinatePanel.ts` | 独立坐标面板：实时三套坐标、复制、坐标输入、地图拾取、预览/部署和坐标调试开关。 |
+| `ui/SpatialAnalysisPanel.ts` | V0.6-B 面板：数量/高度/吸附阈值、选点、进度/取消、矩阵查看与 JSON/CSV 导出。 |
+| `ui/FloatingPanel.ts` | 四个主要面板共用的右上角图标启动栏、单面板展开、关闭、标题栏拖拽、事件隔离、自动置顶和视口约束。 |
 | `ui/ExperimentPanel.ts` | 左侧实验表单、状态、结果及应用/导出按钮。 |
 | `ui/RegionEditor.ts` | 逐点创建多边形人工禁区；处理撤销、自交、最小间距和闭合面积校验。 |
 | `ui/ControlPanel.ts` | V0.1 面板，非当前默认入口。 |
@@ -306,7 +383,7 @@ GeoJSON → vector-inspect / vector-convert
 | `config/constants.ts` | 仿真固定步、Agent 尺寸/速度和基础颜色。 |
 | `types/index.ts` | 公共三维向量、路径状态等类型。 |
 
-操作入口可以按功能反查：右侧按钮/滑块在 `V02ControlPanel.ts` 绑定，左侧表单在 `ExperimentPanel.ts` 绑定，画布点击/拖动/按键统一由 `MultiTerrainSimulation.ts` 分派。右侧“重新部署胶囊体”和普通“点击设置路径”是互斥交互模式；进入编辑模式后，点击不会设置路径终点。更细的用户操作请见 [README 使用手册](README.md)。
+操作入口可以按功能反查：右侧常规按钮/滑块在 `V02ControlPanel.ts` 绑定，坐标工具在 `CoordinatePanel.ts`，O/T/P 选点与矩阵在 `SpatialAnalysisPanel.ts`，左侧表单在 `ExperimentPanel.ts`，画布点击/拖动/按键统一由 `MultiTerrainSimulation.ts` 分派。“重新部署胶囊体”“Pick From Map”、空间分析选点、禁区和地形编辑与普通“点击设置路径”是互斥交互模式。更细的用户操作请见 [README 使用手册](README.md)。
 
 ## 6. Environment API 怎么读
 

@@ -183,9 +183,10 @@ test('GIS vector layers preserve holes, road width, height samples and obstacle 
   };
   const buildingLayer = new BuildingLayer(buildings); const roadLayer = new RoadLayer(roads);
   try {
-    assert.equal(buildingLayer.getCollisionBoxes().length, 1);
-    assert.equal(buildingLayer.getCollisionBoxes()[0].center.y, 7.5);
+    assert.ok((buildingLayer.getCollisionMesh()?.vertices.length ?? 0) > 0);
+    assert.ok((buildingLayer.getCollisionMesh()?.indices.length ?? 0) > 0);
     assert.ok(buildingLayer.root.getObjectByName('osm-buildings-merged'));
+    assert.equal(buildingLayer.root.getObjectByName('osm-building-collision-debug')?.visible, false);
     assert.ok(roadLayer.root.getObjectByName('osm-roads-ribbon'));
     const semantics = new SemanticMap([...roadSemanticRegions(roads), ...buildingSemanticRegions(buildings)], { minX: -10, maxX: 10, minZ: -10, maxZ: 10 });
     assert.equal(semantics.regionAt(0, 0)?.type, 'obstacle');
@@ -316,18 +317,29 @@ test('changing capsule height updates both visible body and collision shape', as
   } finally { physics.dispose(); }
 });
 
-test('simplified OSM building collider blocks a horizontal Rapier ray', async () => {
+test('OSM building trimesh follows a concave footprint instead of its bounding box', async () => {
   const terrain: TerrainData = {
     terrainId: 'building-collider', width: 20, depth: 20, rows: 2, cols: 2,
     origin: { x: -10, y: 0, z: -10 }, heights: new Float32Array(4),
     minHeight: 0, maxHeight: 0, waterRegions: [], semanticRegions: [], detectedMeshes: [], revision: 0,
   };
   const physics = await TerrainPhysicsWorld.create(terrain);
+  const buildings: BuildingCollection = {
+    type: 'BuildingCollection', terrainId: 'building-collider', projectedCRS: 'EPSG:32613',
+    coordinateConvention: { x: 'east', y: 'up', z: 'south' },
+    features: [{
+      id: 'concave-building', type: 'building', baseHeight: 0, extrudeHeight: 5,
+      rings: [[[-2,-2],[2,-2],[2,-1],[-1,-1],[-1,2],[-2,2],[-2,-2]]],
+      properties: {}, sourceFeatureId: 'concave-building', sourceType: 'Polygon', sourceProperties: {},
+    }],
+  };
+  const layer = new BuildingLayer(buildings);
   try {
-    physics.setBuildingColliders([{ id: 'b', center: { x: 0, y: 2.5, z: 0 }, size: { x: 2, y: 5, z: 2 } }]);
+    physics.setBuildingColliderMesh(layer.getCollisionMesh());
     physics.step(1 / 60);
-    const hit = physics.world.castRay(new physics.rapier.Ray({ x: -3, y: 2.5, z: 0 }, { x: 1, y: 0, z: 0 }), 10, true);
-    assert.ok(hit);
-    assert.ok(Math.abs(hit.timeOfImpact - 2) < 1e-4);
-  } finally { physics.dispose(); }
+    const roofHit = physics.world.castRay(new physics.rapier.Ray({ x: -1.5, y: 6, z: 1 }, { x: 0, y: -1, z: 0 }), 10, true);
+    const emptyCornerHit = physics.world.castRay(new physics.rapier.Ray({ x: 1, y: 6, z: 1 }, { x: 0, y: -1, z: 0 }), 10, true);
+    assert.ok(roofHit && Math.abs(roofHit.timeOfImpact - 1) < 1e-4);
+    assert.ok(emptyCornerHit && Math.abs(emptyCornerHit.timeOfImpact - 6) < 1e-4);
+  } finally { layer.dispose(); physics.dispose(); }
 });

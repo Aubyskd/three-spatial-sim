@@ -74,20 +74,13 @@ export class ThreeRenderer {
     this.updateCameraViewport();
   }
 
-  private updateCameraViewport(): void {
-    const width = window.innerWidth; const height = window.innerHeight;
-    let left = 0; let right = 0;
-    for (const panel of this.host.querySelectorAll<HTMLElement>('.control-panel, .experiment-panel')) {
-      if (!panel.getClientRects().length) continue;
-      const bounds = panel.getBoundingClientRect();
-      if (bounds.left < width / 2 && bounds.right <= width / 2) left = Math.max(left, bounds.right);
-      else if (bounds.right > width / 2) right = Math.max(right, width - bounds.left);
-    }
-    // Keep the orbit target in the exposed canvas, including narrow embedded browsers.
-    const offset = THREE.MathUtils.clamp((right - left) / 2, -width * 0.4, width * 0.4);
-    this.camera.setViewOffset(width, height, offset, 0, width, height);
+  private readonly updateCameraViewport = (): void => {
+    // Floating UI must never modify the camera projection. Previously the
+    // panel position changed setViewOffset while dragging, which looked like
+    // OrbitControls was rotating/panning the scene with the panel.
+    this.camera.clearViewOffset();
     this.camera.updateProjectionMatrix();
-  }
+  };
 
   private readonly resize = (): void => {
     this.camera.aspect = window.innerWidth / window.innerHeight;
