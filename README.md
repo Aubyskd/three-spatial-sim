@@ -1,139 +1,137 @@
-# Three Spatial Sim：项目说明与中文使用手册
+# Three Spatial Sim
 
-Three Spatial Sim 是浏览器中的三维空间仿真平台：Three.js 展示地形、水面、OSM 建筑/道路、胶囊体和塔站，Rapier 处理物理碰撞，Recast 与网格 A* 规划路径；算法环境可评估和优化信号塔布局。本文按当前源码编写。仓库已经包含 V0.6-B 可见性矩阵与最短路径全可达图、V0.6-A 坐标检查与按坐标放置资产、V0.5 GIS/OSM 导入以及此前的交互改进；`package.json` 中的 `0.1.0` 只是 npm 包版本。
+浏览器中的三维地形、GIS 与空间算法实验平台。可以导入地形和建筑道路数据，编辑地面、绘制禁行区、部署胶囊角色与信号塔，并进行坐标定位、建筑通视分析、道路可达性分析和信号塔布局优化。
 
-阅读实现请看 [代码与目录导读](CODEBASE_GUIDE.md)；转换 DEM 的完整实操请看 [GeoTIFF 接入步骤](tools/GIS_GeoTIFF_地形转换与平台接入步骤.md)。
+本文按当前 **V0.6-B2 功能阶段**的源码整理。`package.json` 的 `0.1.0` 是 npm 包版本；部分面板标题仍保留其最初引入时的版本号，不代表整个平台的功能版本。
 
-## 1. 安装与启动
+## 目录
 
-需要 Node.js 20.19+ 或 22.12+。在项目根目录运行：
+- [1. 当前能力与边界](#1-当前能力与边界)
+- [2. 安装与启动](#2-安装与启动)
+- [3. 第一次使用与界面操作](#3-第一次使用与界面操作)
+- [4. 地形管理与模型识别](#4-地形管理与模型识别)
+- [5. 胶囊导航与重新部署](#5-胶囊导航与重新部署)
+- [6. 地形编辑与 Restrict 禁行区](#6-地形编辑与-restrict-禁行区)
+- [7. 坐标检查与信号塔部署](#7-坐标检查与信号塔部署)
+- [8. 物理选点与空间分析](#8-物理选点与空间分析)
+- [9. 空间优化实验](#9-空间优化实验)
+- [10. GIS 地形建筑与道路导入](#10-gis-地形建筑与道路导入)
+- [11. 保存导出与会话状态](#11-保存导出与会话状态)
+- [12. 调试图层与问题排查](#12-调试图层与问题排查)
+- [13. 算法 API 与扩展入口](#13-算法-api-与扩展入口)
+- [14. 目录职责与代码阅读顺序](#14-目录职责与代码阅读顺序)
+- [15. 测试与验收](#15-测试与验收)
+- [16. 已知限制与相关文档](#16-已知限制与相关文档)
+
+## 1. 当前能力与边界
+
+| 模块 | 已实现功能 | 使用前需要知道 |
+| --- | --- | --- |
+| 三维场景 | 多地形切换、GLB 采样、GIS 高度网格、动态水面、白底低饱和配色 | 地形仿真基于 2.5D 高度场，不是任意三维体素世界。 |
+| 胶囊角色 | 点击移动、碰撞、路径规划、重新部署、尺寸调整、镜头定位 | 使用 Recast 与网格 A*，不是沿 OSM 道路图移动。 |
+| 地形与禁区 | 抬高、降低、平整、多点多边形 Restrict、贴地覆盖显示 | 修改保存在页面会话中，需主动导出。 |
+| GIS / OSM | GeoTIFF 转换、建筑挤出与实体碰撞、道路宽度与高程 | 读取本地数据，不自动联网下载 OSM。 |
+| 坐标与资产 | Local / Projected / LonLat、鼠标或坐标部署信号塔 | 地理坐标转换要求地图具有有效 GIS 元数据。 |
+| 通视分析 | 观察点与目标点、配置高度、建筑遮挡、矩阵与射线 | 当前只有建筑参与通视遮挡。 |
+| 道路可达性 | 道路图、道路吸附、Dijkstra、全部可达点对、成本矩阵 | 需要结构化道路数据；当前为无向图，不执行单行道或 MST。 |
+| 优化实验 | 信号塔布局随机搜索、评分、应用最优解、结果导出 | 界面目前只有一个任务和一种优化算法。 |
+| 算法接口 | reset / observe / step / evaluate、栅格观察、本地消息桥 | 尚无 Python WebSocket 连接或独立 headless 运行入口。 |
+
+三套容易混淆的计算流程：
+
+| 想做的事 | 数据与算法 | 代码入口 |
+| --- | --- | --- |
+| 让绿色胶囊走到目标 | 地形、语义与障碍 → Recast / 网格 A* → 角色运动 | `src/navigation/`、`src/agent/` |
+| 比较 P1、P2 等点的道路距离 | 道路中心线 → RoadGraph → Dijkstra | `src/roads/`、`src/analysis/ReachabilityGraphBuilder.ts` |
+| 寻找更好的塔站布局 | 候选塔位 → 约束与覆盖评价 → Random Search | `src/algorithm/`、`src/evaluation/` |
+
+## 2. 安装与启动
+
+需要支持 WebGL 的桌面浏览器，以及符合当前 Vite 依赖要求的 Node.js：`^20.19.0 || >=22.12.0`。npm 随 Node.js 安装。只使用现有地图时不需要安装 Python。
+
+在项目根目录执行：
 
 ```powershell
-npm install
+npm ci
 npm run dev
 ```
 
-浏览器打开终端显示的本地地址，通常是 `http://localhost:5173/`。首次加载大型模型、构建碰撞和导航数据需要一些时间。
+`npm ci` 按现有 `package-lock.json` 安装依赖，适合首次安装或恢复开发环境。浏览器打开终端实际显示的地址，通常是 `http://localhost:5173/`；不要直接双击 `index.html`。大型地形初次采样、构建碰撞和导航时可能需要等待。
 
-| 命令 | 作用 |
+| 命令 | 用途 |
 | --- | --- |
-| `npm run build` | TypeScript 检查并生成 `dist/` 生产文件。 |
-| `npm run preview` | 预览已构建的版本；先执行 build。 |
-| `npm run test:terrain` | 运行可见性/可达图、坐标转换与放置，以及地形、水体、禁区、路径、碰撞和胶囊体回归测试。 |
+| `npm run dev` | 启动 Vite 开发服务器，修改源码后自动更新页面。 |
+| `npm run build` | 执行 TypeScript 检查并生成 `dist/`。 |
+| `npm run preview` | 本地预览生产构建；需先执行 build。 |
+| `npm run test:terrain` | 运行地形、坐标、物理选点及空间分析回归测试。 |
 
-仅开发验收时，可访问 `/?algorithmSelfTest=1`，页面会显示算法环境自检报告；正常使用不需要该参数。
+Windows PowerShell 若拦截 `npm.ps1`，可将命令中的 `npm` 换成 `npm.cmd`，不必为此修改系统执行策略。GIS 工具的 Python 安装步骤见第 10 节。
 
-## 2. 界面和基本操作
+## 3. 第一次使用与界面操作
 
-中央是三维画布，右侧是“算法空间仿真”控制面板，左侧是“空间优化实验”。鼠标左键拖动旋转视角、滚轮缩放、右键拖动平移。画布上的**左键短按**用于选择位置；拖动不会设置路径终点。平台为右手坐标系，Y 向上，X/Z 是地平面，局部单位为米。
+### 四个功能面板
 
-右上角的四个图标依次打开“算法空间仿真”“空间优化实验”“Coordinate Inspector”和“Visibility & Reachability”。启动时只显示图标栏；点击一个图标会打开对应浮动面板，并自动关闭此前打开的面板，避免遮挡场景。活动图标会高亮，面板右上角 `×` 或再次点击活动图标可关闭。按住面板标题栏仍可拖动到窗口内任意位置，双击标题栏也可关闭。面板的点击、滚动和拖动事件与 Three.js 画布隔离，拖动面板不会旋转、平移或改变相机投影。
+右上角图标栏打开以下面板；以图标提示文字识别，不依赖固定排列顺序。
 
-右侧 `FPS` 是画面帧率，`AGENT` 和 `TARGET` 显示 X/Z 坐标，`PATH` 显示空闲、规划、移动、到达或阻塞状态。
+| 面板 | 主要用途 |
+| --- | --- |
+| 算法空间仿真 | 地形切换、胶囊控制、编辑、手工放塔、禁区、基础调试。 |
+| 空间优化实验 | 配置并运行塔站布局优化，查看与导出最优方案。 |
+| Coordinate Inspector | 查看坐标、按坐标放塔、坐标调试。 |
+| 空间分析 / Visibility & Reachability | 物理选点、建筑通视、道路可达图。 |
 
-### 设置路径终点
+默认只显示图标栏。点击图标展开面板，同时收起其他面板；再次点击活动图标、点击面板 `×` 或双击标题栏可收起。按住标题栏可拖动面板，面板内的鼠标操作与三维相机隔离。
 
-退出编辑/放置模式后，单击有效地形表面。平台检查有效地形支撑、语义区域和导航可达性，通过后显示目标和路径，胶囊体自动前往。水域、障碍、Restrict 禁区及无有效地形支撑的位置不能作为终点。路线的每段也会检测是否穿过 Restrict；Recast 路线不合格时尝试网格 A* 绕行，确实无路可走时提示失败，而不交付穿越禁区的路径。
+### 鼠标与交互模式
 
-`Reset Simulation` 复位胶囊体、速度、目标、路径和仿真计时，但**不删除**地形编辑、禁区或塔站。`定位胶囊体` 聚焦当前胶囊体，`Focus Terrain` 聚焦整张地形。
+- 普通浏览时，左键拖动旋转、滚轮缩放、右键拖动平移。
+- 画布上的左键短按执行当前模式的操作；拖动视角不会添加路径终点或分析点。
+- 地形笔刷启用时，左键拖动用于绘制；回到 `Off` 后恢复普通浏览操作。
+- 放塔、重新部署、禁区绘制、坐标拾取和空间选点有各自模式。使用时注意按钮高亮和面板提示。
+- 收起面板不等于取消当前选点工具。空间选点可按 `Stop Point Selection` 或 `Esc` 停止；其他工具使用取消按钮或 `Esc`。
 
-### 重新部署胶囊体
+### 建议的首次体验顺序
 
-按 `重新部署胶囊体`，移动鼠标：绿色环表示可部署，红色环表示不可部署；在合法位置单击即完成。校验包括地形支撑、高度、坡度、水域/禁区及资产占位。操作会清除旧目标和路径，同时更新本次会话的重置出生点，因此以后按 Reset 会回到新位置。再次按按钮或 `Esc` 可取消。地形经笔刷修改后，部署校验读取点击位置的当前地形，不只看旧导航格中心。
+1. 打开“算法空间仿真”，等待默认地形加载完成，按 `Focus Terrain` 查看全貌。
+2. 按“定位胶囊体”，退出其他工具后单击附近合法地面，观察绿色胶囊沿路径移动。
+3. 用 `Add Restricted` 画一个禁区，再点禁区另一侧，检查胶囊能否绕行。
+4. 打开 Coordinate Inspector，在地形上移动鼠标，查看本地坐标。
+5. 若 Aspen 数据文件完整且可访问，切换 `aspen_dem`，体验建筑、道路、通视与道路可达性。
+6. 最后运行优化实验。实验会清空现有塔站，先导出需要保留的布局。
 
-### 画幅大小和胶囊大小
+## 4. 地形管理与模型识别
 
-“画面与胶囊体”有互相同步的滑块与数字框；数字框输入后按 Enter 或移开焦点生效。
+### 当前地图清单
 
-| 控件 | 范围 / 默认值 | 效果 |
+地形选项来自 [manifest.json](public/assets/maps/terrain-demo/manifest.json)，不是写死在 UI 中。
+
+| ID | 当前界面名称 | 数据来源 |
 | --- | --- | --- |
-| 画幅大小 | 25°～90° / 52° | 调整相机透视视场角 FOV。角度越大，同一距离看到的范围越广；**不改变**像素分辨率或地形尺寸。 |
-| 胶囊大小 | 高度 0.9～5.4 m / 1.8 m | 同步改变可见胶囊、Rapier 碰撞体和离地偏移；改变大小会停止当前路径，需要重新点目标。 |
+| `terrain-01` | Coastal Terrain | `source/terrain1.glb`，GLB 采样。 |
+| `terrain-02` | Valley Terrain | `source/terrain2.glb`，GLB 采样。 |
+| `aspen_dem` | aspen_dem | `generated/aspen/` 下的 DEM 地形包，以及结构化建筑、道路 JSON。 |
 
-公里级 GIS 地形上的胶囊体可能很小，可用“定位胶囊体”；远景定位标记不放大胶囊本体。
+清单中存在选项不代表资源一定已在当前电脑上准备好。尤其是 Aspen，需同时具备清单引用的地形、元数据、建筑和道路文件。
 
-### 坐标检查与按坐标放置资产（V0.6-A）
+### 切换、重载与定位
 
-右侧独立的 `Coordinate Inspector / Asset Placement` 面板负责坐标查看、转换和精确放置。平台统一采用右手局部坐标：**+X 向东、+Y 向上、+Z 向南，1 个世界单位 = 1 米**。鼠标移到当前地形表面时，Inspector 会实时显示：
+- `Current Terrain`：切换活动地形。系统先构建新运行时再替换旧运行时；切换失败时保留原地形并报告错误。
+- `Reload Terrain`：从源数据重新加载当前地形，丢弃该地形会话内的修改；有未导出修改时先确认。
+- `Focus Terrain`：只调整镜头，不改变数据。
+- 每张地图的地形编辑、手工禁区和资产状态在当前页面会话内分别保留；刷新不会自动恢复这些修改。
 
-- `Local`：平台局部 X/Y/Z，显示 2 位小数；任何地形都可用。
-- `Projected`：当前 GIS 地形的投影 Easting/Northing/Elevation，显示 2 位小数。
-- `Lon/Lat`：WGS84 经度/纬度/高程，经纬度显示 6 位小数。
+### GLB 模型分类与水体
 
-每一行的 `Copy` 可复制该组数值。Projected 和 Lon/Lat 只有在当前地形具有合法 `metadata.json`、`projectedCRS` 和 `localOrigin` 时才启用；普通 GLB 地形会明确显示为仅支持 Local，不会猜测或伪造经纬度。
+`Detected Meshes / Roles` 展示检测到的子网格，可手工指定 `land`（地面）、`water`（水体）或 `ignore`（不参与采样），然后按 `Reload Terrain` 重新采样。
 
-按坐标放置信号塔的步骤：
+自动识别参考网格与材质名称等信息；独立水网格按其覆盖范围采样。没有独立水网格时，只有存在水域命名提示或显式启用推断等条件下才进行低地水体推断，不能保证任意未标注模型都能正确识别。
 
-1. 在面板选择 `Signal Tower` 和输入模式：`Local`、`Projected` 或 `Lon/Lat`。两个横向输入框会随模式表示 X/Z、Easting/Northing 或 Longitude/Latitude。
-2. 选择 `Auto Terrain Y` 时，高程由当前 `TerrainHeightProvider` 在地形高度网格上双线性采样；选择 `Manual Y/Elevation` 时可填写局部 Y 或绝对投影高程。
-3. 可直接填写数值，也可按 `Pick From Map` 后单击当前地形。拾取只射线检测活动地形，不会误选建筑、塔或调试层；结果同时更新输入、坐标标记和三套坐标读数。
-4. 按 `Preview` 查看半透明预览。预览不会新增资产、碰撞体或保存状态；绿色表示通过，红色表示不可放置。
-5. 按 `Deploy` 正式部署。系统依旧经过现有 `PlacementValidator`，检查地形边界、有效支撑、水域、Restrict、坡度和资产碰撞；失败会显示明确原因。
-
-面板的调试开关可分别显示 `Coordinate Marker`、`Local Origin`、`Terrain Bounds`、`World Axes` 和 `100 m Grid`。它们只帮助核对坐标，不参与导航、语义或物理。切换地形时，坐标服务、拾取目标、CRS、原点、边界和面板输入会一起重置，避免旧地形坐标被误用。
-
-`Export Assets` 现在导出一个对象，而不只是数组：
-
-```json
-{
-  "coordinateReference": {
-    "projectedCRS": "EPSG:32613",
-    "units": "meters",
-    "coordinateConvention": { "x": "east", "y": "up", "z": "south" },
-    "localOrigin": { "easting": 343380.51, "northing": 4339223.20, "elevation": 2376.56 },
-    "verticalScale": 1,
-    "localBounds": {}
-  },
-  "assets": []
-}
-```
-
-具体值来自当前活动地形；仅 Local 地形的投影字段为空。加载逻辑同时兼容旧的纯资产数组和新包装格式。实现与验收细节见 [V0.6-A 坐标与资产放置交付说明](V06A_COORDINATE_ASSET_PLACEMENT.md)。
-
-### 可见性矩阵与最短路径全可达图（V0.6-B）
-
-`Visibility & Reachability` 是独立可拖动面板，和坐标工具共用同一个 `TerrainPicker` 与局部米制坐标。所有点都必须由当前活动地形表面拾取；建筑、道路、资产和调试图元不会成为点击基础面。短按添加点，拖动视角不会误选；`Esc` 停止选点，选点时 `Backspace` 撤销当前类型最后一点。
-
-可见性分析步骤：
-
-1. 填写 `Observer Count` 与 `Target Count`，并设置两类点的高度。默认都是 1.50 m，但它们是传入算法的配置值，不是算法内部常量；`Ray Epsilon` 默认 0.01 m。
-2. 按 `Select Observers`，在地形上选择 O1、O2……达到数量后自动停止；点错可按该行 `Undo` 或 `Clear`。再用相同步骤选择 T1、T2……。
-3. 按 `Compute Visibility`。算法从地面点加 Observer 高度发射到目标地面点加 Target 高度的射线，**只把当前地形的建筑网格当作遮挡物**；地形、道路、树、资产和车辆当前都不遮挡。
-4. 矩阵行是 Observer，列是 Target；`1` 表示没有建筑遮挡，`0` 表示射线在目标之前击中建筑。场景中实线/虚线及 `VISIBLE`/`BLOCKED` 标签用于检查每一对点。
-5. 可导出 JSON 或 CSV；JSON 还包含点、配置、距离和命中建筑信息。改变点位后旧结果自动失效，`Clear Result` 只清结果和射线，不删除点。
-
-可达图步骤：
-
-1. 先输入 `Node Count = N` 和 `Max Nav Snap`。按 `Select Graph Nodes` 后选择 P1…PN；如果点击处到最近可导航位置超过阈值，会报告 `NO_NEARBY_NAVMESH`，不会远距离偷偷吸附。
-2. 每个节点同时保留原始地形点、吸附后的导航点与吸附距离。达到 N 个点后自动结束选点。
-3. 按 `Build Full Graph`。系统只计算每一对 `i < j`，因此总任务数为 `N(N-1)/2`；进度显示已完成 pair，可按 `Cancel` 中止。
-4. Pathfinder 同时检查当前可用的 Recast 与三维几何代价 A* 候选。边 cost 是候选中**实际折线路径长度最短**者，单位米，不是端点直线距离，也不是路点数量。边保留完整 shortest-path 几何，地图绘制真实路径和长度。
-5. 结果是无向的完整加权可达图：所有可达 pair 都保留，不可达 pair 没有边。邻接矩阵对称，主对角为 0；cost matrix 对称、主对角为 0、不可达为 `null`（界面显示 `∞`）。本版本明确**不做 MST**，不会因为边 cost 较高而删除合法边。
-6. JSON 包含节点、边、真实路径、邻接矩阵和 cost matrix；CSV 分 metadata、nodes、edges、adjacency matrix、cost matrix 五段导出。`Clear`/`Undo` 可重选节点，`Clear Result` 清图结果。
-
-切换或重新加载地形时，三类点、矩阵、图、射线与路径调试线会全部清空，并换用新地形的 BuildingLayer、NavMesh 和 Pathfinder。地形编辑会清除全部空间分析状态；禁区、资产或导航发生变化时，旧可达图会被清除，避免展示失效路径。更详细的数据结构和验收记录见 [V0.6-B 可见性与可达图交付说明](V06B_VISIBILITY_REACHABILITY_GRAPH.md)。
-
-## 3. 地形：选择、识别、重新加载
-
-`Current Terrain` 选项由 [manifest.json](public/assets/maps/terrain-demo/manifest.json) 自动生成。当前清单包含：
-
-| ID | 界面名称 | 来源 |
-| --- | --- | --- |
-| `terrain-01` | Coastal Terrain | `source/terrain1.glb` |
-| `terrain-02` | Valley Terrain | `source/terrain2.glb` |
-| `aspen_dem` | Aspen DEM + OSM | GIS DEM 加结构化 OSM 建筑/道路图层 |
-
-切换时先建立新地形的渲染、物理、导航和 Agent，再替换旧运行时；加载失败通常保留原地形。每张地形的编辑和资产状态在**当前浏览器页面会话**中分别保留，刷新或关闭页面后未导出的修改会丢失。
-
-`Reload Terrain` 从源文件重新加载**当前地形**，丢弃它在本次会话的改动；有未导出修改时会先确认。`Focus Terrain` 仅调整镜头。
-
-`Detected Meshes / Roles` 列出 GLB 子网格，可把错误识别的网格改为 `land`、`water` 或 `ignore`；随后按 Reload 重新采样才生效。自动识别主要参考网格和材质名称。独立 water mesh 会按真实覆盖采样；只有明确指定推断或存在水域命名提示而无独立水网格时，才采用低地水体推断。清单中有 `data: terrain.json` 的 GIS 地形直接读取数据文件，调整 GLB role 不会让它改走 GLB 重采样。
+如果地图描述符声明了 `data`，运行时直接使用 `terrain.json` 的高度数据，不会因为修改 GLB role 就改成重新采样 GLB。编辑水域分类前，先确认地图使用哪条加载路径。
 
 ### 添加自己的 GLB
 
-1. 将文件放入 `public/assets/maps/terrain-demo/source/`。
-2. 在 manifest 的 `terrains` 中增加唯一 ID、名称、相对 source、`type: "glb"` 和采样分辨率；根据模型单位填写 `scale`，Z 轴向上的模型填写 `upAxis: "z"`。
-3. 刷新页面，在地形下拉框选择它，检查朝向、尺寸、水体、胶囊出生位置和调试显示；必要时修改 mesh role 并 Reload。
+1. 把文件放到 `public/assets/maps/terrain-demo/source/`。
+2. 在 manifest 的 `terrains` 数组中添加唯一 ID 与相对路径，例如：
 
 ```json
 {
@@ -147,59 +145,344 @@ npm run dev
 }
 ```
 
-如果描述符含 `data`，`terrain.json` 是地形高度、渲染和物理的主数据源；GLB 不再作为第二套高度重采样。`metadata` 记录 GIS 来源和坐标变换信息。
+3. 根据模型原始单位调整 `scale`；Z 向上的模型使用 `upAxis: "z"`。
+4. 刷新页面并选择新地图，核对朝向、尺寸、水体、碰撞和出生点。仅复制文件不会自动增加选项。
 
-## 4. 地形编辑与导出
+## 5. 胶囊导航与重新部署
 
-`Edit Terrain` 提供 `Raise` 抬高、`Lower` 降低、`Flatten` 按本次起笔点高度整平、`Off` 退出。选择工具后设置 `Radius`（面板 1～12 m，默认 3 m）及 `Strength`（0.05～1.5，默认 0.45），在地形上按住左键拖动。笔刷有平方衰减；`Flatten` 的参考高度来自按下鼠标的位置。
+### 点击移动
 
-笔画期间更新可见网格；松开鼠标后重建 Rapier 地形碰撞、动态水面和导航，旧路径停止。曾是未采样空白的格点被实际涂画后可变为有支撑地面。粗分辨率 GIS 地形可能需要较大半径才能影响到网格顶点。
+退出编辑、放置与分析选点模式后，单击合法地面。系统检查地形支撑、语义与导航条件，通过后设置目标，显示路径并驱动胶囊移动。水域、障碍和 Restrict 区域不能作为目标。
 
-`Export Terrain` 下载当前 `TerrainData` JSON（包括高度、覆盖掩码、水面数据）。下载**不会**自动修改项目里的文件或 manifest，也不会在刷新后自动恢复。要把编辑结果作为下次启动的数据，需自行保存到项目资源目录并把 manifest 的 `data` 指向它。
+胶囊路径会检查中间线段是否穿过 Restrict。Recast 路线不符合约束时会尝试网格 A*；无法找到合法路线则报失败，不把“终点合法”当成“整条路线合法”。
 
-## 5. 塔站、Restrict 禁区与调试层
+面板 `AGENT`、`TARGET` 显示角色和目标 X/Z，`PATH` 显示规划、移动、到达或阻塞等状态。
 
-### 手工信号塔
+### 重新部署与重置
 
-按 `Place Signal Tower`，移动鼠标预览，单击合法地面放置一次。平台检查边界与支撑、水域/禁区、坡度及已有资产碰撞；通过后创建可视塔和固定物理碰撞体。`Export Assets` 下载当前地形的资产 JSON。右侧手工放置和左侧算法实验使用两套不同的验证入口，研究复现应统一使用 Environment API。
+1. 按“重新部署胶囊体”。
+2. 移动鼠标观察预览环：绿色可部署，红色不可部署。
+3. 单击合法地面完成部署；再次按按钮或按 `Esc` 取消。
 
-### 绘制 Restrict 禁区
+部署校验包括当前地形支撑、坡度、水域、禁区与资产占位。部署成功会停止旧路径，并更新本次会话的重置出生点。地形经过笔刷修改后，校验会读取当前点击位置的地面，不只依赖旧导航格中心。
 
-1. 按 `Add Restricted`，在地形表面依次点**至少三个不同位置**。系统按顺序连线，完成时自动连接末点与首点，不必重复点击起点。
-2. 点错可按 `撤销上一点` 或 `Backspace`。边线自交、点距过小或面积过小会被拒绝。
-3. 再按变成 `完成选区 (N 点)` 的按钮闭合。禁区覆盖会贴合当前地形可视表面；导航随后重建，原目标和路径停止。
-4. `取消选区` 或 `Esc` 只放弃正在画的点；`Clear Regions` 清空当前地形**所有手工禁区**，不删自动语义区域；`Export Semantic` 下载手工禁区 JSON。
+`Reset Simulation` 重置角色、目标、路径和仿真计时，**不会删除**地形编辑、手工禁区或塔站。“定位胶囊体”只聚焦角色；公里级 GIS 地图上可用它快速找到真实米制大小的胶囊。
 
-禁区内不能选择路径终点；穿越禁区的路径段会被排除或改为绕行。导出的 Semantic JSON 同样不会自动写回项目，也不会在刷新后自动导入。
+### 画幅与胶囊大小
 
-### Debug 与 OSM 图层开关
+滑块与数值输入框互相同步；输入数值后按 Enter 或移开焦点生效。
 
-| 开关 | 显示内容 | 正确理解 |
+| 控件 | 范围 / 默认值 | 含义 |
 | --- | --- | --- |
-| `Semantic` | 水域、障碍和禁区等半透明贴地语义覆盖；默认开启。 | 人工禁区有轮廓，不是独立地形模型。 |
-| `NavMesh` | 当前导航**采样格**。 | 并非完整 Recast 多边形，也不是原 GLB 的三角面；隐藏它不影响导航。 |
-| `Colliders` | Rapier 世界的调试线框，包括 heightfield、角色和资产碰撞体。 | 与源 GLB 的细节网格可以不同；这是实际仿真碰撞的可视化，开关不改变碰撞。 |
-| `Buildings` | OSM 建筑挤出网格。 | 只控制显示；建筑语义与物理碰撞仍然生效。 |
-| `Roads` | 具有真实宽度并贴地的 OSM 道路带。 | 只控制显示；道路语义仍然保留。 |
-| `Building Collision` | 与可见挤出建筑相同的 Rapier trimesh 线框，默认关闭。 | 用于核对实体碰撞边界；开关只显示/隐藏线框，不会启停真实碰撞。 |
-| `Road Width Debug` | 道路左右边界。 | 用于核对 `highway`/车道宽度映射。 |
-| `Terrain Height Samples` | 建筑地形采样点与道路采样点。 | 用于排查局部坐标、高度或南北翻转问题。 |
+| 画幅大小 | 25°～90° / 52° | 相机 FOV；同一距离下越大看得越广，不改变分辨率或地图尺寸。 |
+| 胶囊大小 | 高度 0.9～5.4 m / 1.8 m | 同步更新可见角色、物理碰撞体与离地偏移。修改后旧路径停止，需重新选目标。 |
 
-## 6. 左侧空间优化实验
+远景定位标记只是辅助寻找角色，不代表胶囊真实碰撞尺寸变大。
 
-目前内置任务为 `Signal Tower Optimization`，算法为 `Random Search`；这两个下拉框是只读的，尚不能在面板直接切换任务/算法。
+## 6. 地形编辑与 Restrict 禁行区
 
-1. 选 `Terrain`；设定 `Seed`（随机种子）、`Tower Count`（目标塔数，界面 1～20）、`Iterations`（候选布局次数，界面 1～10000）。同一地形 revision、种子和配置有可复现的候选序列。
-2. `Rendering` 选 `Visualization` 或 `Fast`。前者完成后显示覆盖调试色块，后者减少渲染/调试更新；Fast **不是**无浏览器 headless。
-3. 按 `Run Experiment`。运行会重置环境并清除现有塔站；`Stop` 请求中止。每次候选布局只做静态评估，不会逐次创建真实 Three.js/Rapier 塔。
-4. 完成后查看 `Best Score`、`Coverage`、`Overlap`、`Tower Count`、`Cost` 和 `Violations`。覆盖调试色块：红色未覆盖，绿色覆盖一次，黄色重复覆盖。
-5. 按 `Apply Best Solution` 才将最佳方案放进真实世界。`Export JSON` 包含配置、最佳布局、指标、历史和复现元数据；`Export CSV` 是一行实验摘要。
+### 高度笔刷
 
-评分使用 64×64 合法地面采样、塔站 15 m 简化覆盖半径，默认公式为 `覆盖率 − 0.2×重叠率 − 0.1×归一化成本 − 违规数`。它不是无线电传播或遮挡模拟。覆盖调试色块的采样密度低于数值评估网格，不应直接按色块数量重算指标。
+在 `Edit Terrain` 选择工具，在地形上按住左键拖动：
 
-## 7. 算法 API 与消息桥
+| 工具 / 参数 | 用法 |
+| --- | --- |
+| `Raise` | 抬高地面。 |
+| `Lower` | 降低地面。 |
+| `Flatten` | 向本次起笔位置的高度整平。 |
+| `Off` | 退出编辑，恢复普通点击导航。 |
+| `Radius` | 笔刷半径，界面范围 1～12 m，默认 3 m。 |
+| `Strength` | 笔刷强度，界面范围 0.05～1.5，默认 0.45。 |
 
-应用启动成功后，浏览器控制台可以访问 `window.spatialEnvironment`、`window.spatialExperimentRunner`、`window.spatialAlgorithmBridge`。以下是可直接在控制台运行的 JavaScript 示例；塔位仅作示意，先验证再执行：
+笔画期间更新可见地形；松开鼠标后重建地形碰撞、水面和导航，停止旧路径并清理失效的空间分析。粗网格 GIS 地形需要让笔刷覆盖到网格顶点才能产生明显变化。
+
+编辑的是高度场，不是任意 GLB 三角面的雕刻。`Export Terrain` 导出编辑后的数据，保存规则见第 11 节。
+
+### 手工多边形禁区
+
+1. 按 `Add Restricted`，在真实地形表面依次单击至少三个不同点。
+2. 系统按顺序连线；点错时按“撤销上一点”或 `Backspace`。
+3. 按 `完成选区 (N 点)` 闭合。系统自动连接末点与首点，不必重复点击起点。
+4. 自交、过近点位或面积过小会被拒绝，按提示调整。
+5. “取消选区”或 `Esc` 只取消正在绘制的草稿；`Clear Regions` 清除当前地形的所有手工禁区，不删除自动语义。
+
+禁区覆盖贴合地形，用于胶囊导航、资产部署与空间点位合法性判断。`Export Semantic` 导出手工区域。
+
+**注意两套路径的区别：**胶囊导航会检查 Restrict；V0.6-B2 道路图目前按道路数据与通行配置构建，尚未按手工 Restrict 对整条道路边进行裁切或禁用。分析点被禁区拒绝，不等于道路分析的所有中间路段都会避开禁区。
+
+## 7. 坐标检查与信号塔部署
+
+### 坐标体系
+
+平台局部坐标约定为 **+X 向东、+Y 向上、+Z 向南，1 个世界单位 = 1 米**。普通 GLB 的实际方向与尺寸仍取决于导入配置；只有带 GIS 元数据时，才能建立真实地理位置映射。
+
+在 Coordinate Inspector 中，将鼠标移到地形表面查看：
+
+| 显示 / 输入模式 | 含义 | 条件 |
+| --- | --- | --- |
+| `Local XYZ` | 局部 X/Y/Z，单位米。 | 所有地形可用。 |
+| `Projected / UTM` | 当前投影 CRS 下的 Easting、Northing 与高程。 | 需要有效 `metadata.json`、CRS 与局部原点。 |
+| `Longitude / Latitude` | WGS84 经度、纬度；手动高程输入为绝对高程。 | 同上；经度在前、纬度在后。 |
+
+`Copy Local`、`Copy Projected`、`Copy LonLat` 复制对应读数。普通 GLB 显示 `LOCAL ONLY`，不会猜测经纬度。地图切换时清空旧坐标、原点和表单状态。
+
+### 鼠标放塔
+
+在“算法空间仿真”按 `Place Signal Tower`，移动鼠标预览，在合法地面单击放置一座塔。校验包括边界、地形支撑、水域、禁区、坡度和资产碰撞，通过后创建可见模型与固定碰撞体。
+
+### 按坐标放塔
+
+1. 在 Coordinate Inspector 选择 `Signal Tower` 和坐标模式。
+2. 填写 X/Z、Easting/Northing 或 Longitude/Latitude，也可按 `Pick From Map` 后单击地形自动填入。
+3. `Y Mode` 选 `Auto Terrain` 时从当前地形取高度；选 `Manual` 时，本地模式填写 Local Y，地理/投影模式填写绝对高程。
+4. 按 `Preview` 检查半透明预览和校验提示。预览不新增正式资产或碰撞体。
+5. 按 `Deploy` 正式部署；不合法时显示原因。
+
+坐标工具的普通地图拾取使用 `TerrainPicker`，空间分析使用的物理拾取见下一节，二者职责不同。
+
+`Coordinate Debug` 提供坐标标记、局部原点、地形边界、世界坐标轴和 100 m 网格，仅用于观察，不改变坐标或物理规则。
+
+## 8. 物理选点与空间分析
+
+### 8.1 点位必须先合法
+
+在“空间分析”面板选择观察点 O、目标点 T 或图节点 P。当前链路为：
+
+```text
+屏幕点击
+  → PhysicalPointPicker：检测地形、建筑、道路的最近表面
+  → SpatialPointValidator：校验地形支撑、范围、建筑、Rapier 与语义
+  → 保存合法 groundPosition
+  → 通视高度偏移，或吸附到 RoadGraph
+```
+
+点击建筑屋顶或侧面会被拒绝，不会穿透建筑后选中下面的地面。点击道路仍需有效地形支撑，不是任意悬空道路表面都可选。每个点分别保留真实地面位置 `groundPosition` 和分析位置 `analysisPosition`。
+
+短按添加点，达到设定数量后结束。`Undo` / `Backspace` 撤销当前类型最后一点，`Clear` 清该类点，`Stop Point Selection` / `Esc` 停止选点。点选失败时查看 `Invalid Point · 原因`，错误含义见第 12 节。
+
+### 8.2 建筑通视分析
+
+1. 在 `Visibility Analysis` 设置 `Observer Count` 与 `Target Count`，各为 1～20。
+2. 设置观察点与目标点高度，默认各 1.5 m，表示相对地面的分析高度；`Ray Epsilon` 默认 0.01 m。
+3. 按 `Select Observers` 选择 O1、O2……，再按 `Select Targets` 选择 T1、T2……。
+4. 按 `Compute Visibility`。
+5. 查看矩阵和场景射线；需要保存时选择 JSON 或 CSV 导出。
+
+结果行对应 Observer，列对应 Target：`1` 表示无遮挡，`0` 表示射线在到达目标前被建筑阻挡。调试线展示地面点到分析点的高度、通视线和阻挡命中位置。JSON 还包含配置、距离和命中信息。
+
+**当前只检查建筑遮挡**，不把地形、道路、树木、信号塔或胶囊当作遮挡物。没有建筑的地图也能运行，但结果不能当作考虑山体后的真实通视结论。
+
+### 8.3 道路可达性与最短路
+
+前提是地图已加载有效的 `roads.local.json`。普通 GLB 中“看起来像道路”的表面，不会自动变成道路网络；目前可使用配置了道路数据的 `aspen_dem`，或自行导入道路。
+
+1. 打开 `Reachability Graph`，设置 `Traversal Profile`：`pedestrian` 步行、`vehicle` 车辆、`all` 不按道路类型筛选。它是道路通行类型过滤，不是切换优化算法。
+2. 设置 `Node Count`，范围 2～30；设置 `Max Road Snap · m`，默认 10 m。
+3. 按 `Select Graph Nodes`，选择 P1…PN。每个点先通过物理校验，再在阈值内吸附到可通行道路；失败不会远距离强行吸附。
+4. 按 `Build Full Graph`，系统计算每一对 `i < j`，共 `N(N-1)/2` 对；可按 `Cancel` 中止。
+5. 查看实际道路路径、邻接矩阵、成本矩阵，按需导出 JSON / CSV。
+
+当前最短路使用 **RoadGraph + Dijkstra**，不是旧版的 NavMesh/A* 空间可达图。道路每段成本为 `sqrt(dx² + dy² + dz²)`，因此高程进入道路长度；cost 是吸附点之间的沿路距离，不包含从原始点击点走到道路的接入段，也不是预计通行时间。
+
+| 输出 | 含义 |
+| --- | --- |
+| 图节点 | 原始地面位置、道路吸附位置、吸附距离与道路边 ID。 |
+| 图边 | 两点间的最短道路路径 `roadPath`、道路边列表 `roadEdgeIds`、长度 cost（米）。 |
+| 邻接矩阵 | 可达为 1，不可达为 0，主对角为 0，对称。 |
+| 成本矩阵 | 可达为最短道路长度，不可达为 `null`（界面显示 `∞`），主对角为 0，对称。 |
+
+保留所有可达点对，**不做最小生成树（MST）**，也不枚举全部可能路线。道路图为无向图，导出包含 `directed: false` 和 `onewayEnforced: false`，目前不强制 OSM 单行道。
+
+道路交叉要求 X/Z 几何相交，且 `layer`、`bridge`、`tunnel` 兼容，以免把立交当普通路口。但这套严格规则仍有边界问题，见第 16 节。
+
+切换通行配置后需重新选择道路图节点；切换/重载地图或编辑地形会清理空间分析状态。禁区、资产等改变后旧图结果会失效，需重算；**结果失效机制不代表道路边已经完整纳入动态禁区约束**。
+
+## 9. 空间优化实验
+
+### 当前任务与操作
+
+当前只有 `Signal Tower Optimization` 和 `Random Search`，`Task` / `Algorithm` 下拉框是只读的。
+
+1. 选择实验 `Terrain`，填写 `Seed`、`Tower Count`（1～20）和 `Iterations`（1～10000）。
+2. 选择 `Visualization` 或 `Fast`。前者显示覆盖调试结果，后者减少渲染；Fast 仍在浏览器中运行。
+3. 按 `Run Experiment`。**运行会重置环境并清空现有塔站**，重要布局请先导出。
+4. 算法反复生成并评价候选布局，不会每次都创建一套真实塔和物理世界；可按 `Stop` 请求停止。
+5. 查看 Best Score、Coverage、Overlap、Tower Count、Cost、Violations。实际找到的塔数可能少于目标数，需检查结果。
+6. 按 `Apply Best Solution` 将最优方案写入真实场景；只完成搜索并不等于已经部署。
+7. `Export JSON` 保存配置、方案、指标、历史和复现信息；`Export CSV` 保存实验摘要。
+
+同一输入数据、地形状态、种子、配置和算法版本可复现候选序列；只记录 Seed 不足以复现修改后的地图。
+
+### 评分如何理解
+
+默认采用 64×64 合法地面采样、15 m 圆形覆盖半径，每座塔成本为 1：
+
+```text
+score = coverageRatio
+      - 0.2 × overlapRatio
+      - 0.1 × (totalCost / targetTowerCount)
+      - constraintViolations
+```
+
+覆盖率是至少被一座塔覆盖的合法样点比例；重叠率是被两座及以上塔覆盖的比例。调试色块红色为未覆盖、绿色为单次覆盖、黄色为重复覆盖；色块采样密度与数值评价网格不同，不应按屏幕色块数量重算指标。
+
+这是一套简化几何覆盖模型，**不是电磁波传播、信号衰减或建筑遮挡模拟**。算法默认最大坡度 12°、塔间最小距离 5 m。手工 UI 与算法使用不同验证入口，不能假定手工放塔完全遵循算法的最小间距规则。
+
+## 10. GIS 地形建筑与道路导入
+
+工具位于 [tools/gis-converter](tools/gis-converter/README.md)，要求 Python 3.11+。不依赖 QGIS 或 Blender 图形界面。以下示例中的文件名是占位名称，先准备自己的输入文件。
+
+### 10.1 安装 Python 依赖
+
+从项目根目录执行：
+
+```powershell
+cd tools/gis-converter
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+直接调用虚拟环境中的 Python，无需运行激活脚本。下列转换命令均在 `tools/gis-converter` 目录执行。
+
+### 10.2 GeoTIFF 转地形包
+
+将 DEM 放到 `input/map.tif`，先检查，再转换、验证：
+
+```powershell
+.\.venv\Scripts\python.exe -m gis_converter.cli inspect --input input/map.tif
+.\.venv\Scripts\python.exe -m gis_converter.cli convert --input input/map.tif --output ../../public/assets/maps/terrain-demo/generated/my-dem --terrain-id my-dem --resolution 128 --target-crs auto
+.\.venv\Scripts\python.exe -m gis_converter.cli validate --terrain ../../public/assets/maps/terrain-demo/generated/my-dem
+```
+
+检查源 CRS、投影范围、高程与 NoData 比例。`--target-crs auto` 对经纬度数据按区域中心选择 UTM，已有米制投影则保留；大区域或跨带区域需人工选择合适投影。`--resolution 128` 指较长边的顶点数，另一边保持实际长宽比。
+
+| 输出文件 | 作用 |
+| --- | --- |
+| `terrain.json` | 运行时高度、尺寸、覆盖掩码等主数据，驱动地形渲染、碰撞与导航。 |
+| `terrain.glb` | 同一高度网格生成的模型，用于可移植预览与一致性检查。 |
+| `metadata.json` | CRS、原点、纵向缩放和 GIS ↔ Local 的映射信息。 |
+
+`validate` 成功应报告 `VALID`。它会检查文件、数值、网格、范围及 GLB/JSON 一致性；警告仍需阅读。有限高度不等于可用地面，NoData 区域由 `sampleCoverage` 标识。
+
+### 10.3 注册到地图列表
+
+上述命令默认不修改 manifest。验证后可手工在 `terrains` 数组添加：
+
+```json
+{
+  "id": "my-dem",
+  "name": "我的 DEM",
+  "type": "glb",
+  "source": "generated/my-dem/terrain.glb",
+  "data": "generated/my-dem/terrain.json",
+  "metadata": "generated/my-dem/metadata.json",
+  "samplingResolution": 128
+}
+```
+
+刷新页面后选择 `my-dem`。必须保留 `data` 与 `metadata`，不要只把 GLB 当普通模型导入，否则不能沿用完整 GIS 高度真值与地理坐标关系。
+
+也可在**首次 convert** 时增加 `--update-manifest`，工具内部转换与验证成功后注册。不支持通过 `validate` 注册。输出已存在时需明确加 `--overwrite` 并保留备份；`--overwrite` 不代表允许重复地图 ID，已注册地图重新转换时通常不应再次加 `--update-manifest`。输出目录必须位于目标 manifest 所属地图目录内。
+
+批量处理使用 `batch`，完整参数、备份行为和故障处理见工具 README。
+
+### 10.4 导入建筑与道路
+
+先完成 DEM，再使用同一包的 metadata 和 terrain 数据转换 GeoJSON。不要为建筑与道路重新计算独立原点。
+
+```powershell
+.\.venv\Scripts\python.exe -m gis_converter.cli vector-inspect --input input/buildings.geojson
+.\.venv\Scripts\python.exe -m gis_converter.cli vector-inspect --input input/roads.geojson
+.\.venv\Scripts\python.exe -m gis_converter.cli vector-convert --input input/buildings.geojson --terrain-metadata ../../public/assets/maps/terrain-demo/generated/my-dem/metadata.json --terrain-data ../../public/assets/maps/terrain-demo/generated/my-dem/terrain.json --output ../../public/assets/maps/terrain-demo/generated/my-dem/processed/buildings.local.json --type buildings
+.\.venv\Scripts\python.exe -m gis_converter.cli vector-convert --input input/roads.geojson --terrain-metadata ../../public/assets/maps/terrain-demo/generated/my-dem/metadata.json --terrain-data ../../public/assets/maps/terrain-demo/generated/my-dem/terrain.json --output ../../public/assets/maps/terrain-demo/generated/my-dem/processed/roads.local.json --type roads
+```
+
+再向同一个 manifest 地形项添加以下两个字段，而不是新增重复 ID：
+
+```json
+{
+  "buildings": "generated/my-dem/processed/buildings.local.json",
+  "roads": "generated/my-dem/processed/roads.local.json"
+}
+```
+
+建筑按 footprint 挤出，支持内洞；高度优先使用 `height`，其次楼层数乘默认层高 3 m，再回退到默认建筑高度 9 m。建筑物理碰撞使用与可见挤出实体对应的三角网格，不是外围矩形线框。
+
+道路按 `highway` / `lanes` 估计宽度，加密中心线并采样地形高程；默认抬高 0.05 m 减少闪烁。桥梁、隧道、layer 等属性用于道路网络分析，**保留属性不等于生成了真实桥面或地下隧道几何**。
+
+数据保持为独立结构化 JSON，不会把地形、建筑与道路烘焙成一个 GLB。转换不覆盖原始 GeoJSON；manifest 中声明的矢量文件缺失或格式错误时会中止该地图加载。
+
+## 11. 保存导出与会话状态
+
+**所有 Export 都是浏览器下载，不会自动写回仓库、修改 manifest 或保存到数据库。** 页面刷新、关闭或重新载入源数据前，先保存需要保留的修改。
+
+| 导出入口 | 内容 | 下次如何使用 |
+| --- | --- | --- |
+| `Export Terrain` | 当前 TerrainData 高度、覆盖掩码、水面数据等 JSON。 | 将文件保存到地图目录，设置 manifest 的 `data`；保持 terrainId 一致。 |
+| `Export Semantic` | 当前手工语义区域/禁区 JSON。 | 保存并设置 manifest 的 `semantic`。 |
+| `Export Assets` | `coordinateReference` 与 `assets` 包装对象。 | 保存并设置 manifest 的 `assets`；加载器也兼容旧资产数组格式。 |
+| 实验 `Export JSON / CSV` | 完整实验结果 / 一行摘要。 | 用于分析和复现；不是刷新后自动恢复场景的存档。 |
+| 通视 `Export JSON / CSV` | 点、配置和矩阵等结果。 | 用于后续分析；当前没有对应的一键结果回导流程。 |
+| 可达图 `Export JSON / CSV` | 节点、路径、道路边 ID、邻接与成本矩阵。 | CSV 包含 metadata、nodes、edges 和两类矩阵多个区段。 |
+
+只有坐标参考一致的地形、语义和资产才应组合使用。单独导出地形不会同时导出资产和禁区；编辑后的 Terrain JSON 也不会自动重写原始 GLB、DEM 或 GIS 矢量源文件。
+
+## 12. 调试图层与问题排查
+
+### 调试开关
+
+| 开关 | 显示什么 / 适合排查什么 |
+| --- | --- |
+| `Semantic` | 水域、障碍、禁区等语义覆盖，判断为何不可部署或导航。 |
+| `NavMesh` | 胶囊导航采样格；不是完整 Recast 多边形，也不是 RoadGraph。 |
+| `Colliders` | Rapier 实际碰撞体线框。地形为采样 heightfield，与源 GLB 每个三角面不一定完全相同。 |
+| `Buildings` / `Roads` | 建筑和道路的可见图层；关闭显示不等于删除数据或移除相关碰撞、语义。 |
+| `Building Collision` | 与挤出建筑实体对应的碰撞线框，用来核对建筑接触边界。 |
+| `Road Width Debug` | 道路两侧边界，检查宽度。 |
+| `Terrain Height Samples` | 建筑与道路高程采样位置，排查贴地与坐标偏移。 |
+| `Show Road Graph Nodes / Edges` | 道路网络节点与边，判断道路是否真的连通。 |
+| `Show Intersections` | 路口及属性标签，检查 layer、bridge、tunnel。 |
+| `Show Road Snap` | 原始选点到道路吸附点的关系。 |
+| `Show Road Edge Length` | 道路段长度。 |
+
+调试开关主要控制显示，不是启停物理或改变算法约束的开关。
+
+### 空间选点错误
+
+| 错误 | 含义与处理 |
+| --- | --- |
+| `BUILDING_SURFACE` | 最先点到了建筑。调整视角，直接选择地面或道路。 |
+| `BUILDING_COLLISION` | 候选点处于建筑 footprint 内。移到建筑外。 |
+| `PHYSICS_COLLISION` | 建筑物理探针校验失败。打开建筑碰撞调试检查。 |
+| `NO_TERRAIN_SUPPORT` | 没有有效地形命中或覆盖支撑。检查 NoData 与地图边界。 |
+| `OUTSIDE_TERRAIN` | 超出当前地形本地范围。 |
+| `SEMANTIC_FORBIDDEN` | 被水域、障碍、禁区等语义拒绝。打开 Semantic 检查。 |
+| `NO_NEARBY_TRAVERSABLE_ROAD` | 阈值内没有当前通行配置允许的道路。检查道路数据、Profile 与吸附距离，不要只盲目增大阈值。 |
+
+### 常见问题
+
+- **新增地图不出现：**检查 manifest 的 JSON 格式、唯一 ID、相对路径，并刷新；资源目录中的文件不会自动注册。
+- **Aspen 加载失败：**检查 `generated/aspen/` 文件是否齐全、是否有访问权限，并查看浏览器 Network/控制台；声明了 `data` 却无法读取时不会悄悄回退到 GLB 采样。
+- **看不到胶囊：**先按“定位胶囊体”；再检查地图单位、覆盖掩码、合法出生点与加载提示，不要只放大模型掩盖坐标问题。
+- **点地图没有设置移动目标：**确认没有停留在编辑、放置或空间选点模式，等待地图切换结束；关闭面板本身不一定取消工具。
+- **地形修改后仍不能放置：**等待碰撞/导航重建，并检查水域、禁区、坡度、地形支撑和资产占位；可见地面不等于通过所有约束。
+- **水体覆盖不准确：**检查 GLB 子网格 role 与源模型命名；确认是 GLB 采样还是 `data` 加载路径，推断水面不能替代真实水域数据。
+- **碰撞线框与 GLB 细节不同：**地形碰撞基于采样高度场，分辨率与局部细节会影响结果；建筑碰撞则使用挤出实体网格。
+- **坡道路段看起来相连却不可达：**先检查 RoadGraph 边和路口，而不是只看道路色带。当前道路最短路没有简单的“坡度超限即断开”规则；高程进入长度，断连还可能来自中心线端点、通行类型、桥隧/layer 属性或吸附到另一条道路。先前反馈的具体路段仍需定位，不能视为已经修复。
+
+## 13. 算法 API 与扩展入口
+
+### Environment API
+
+应用成功启动后，浏览器控制台提供：
+
+```js
+window.spatialEnvironment
+window.spatialExperimentRunner
+window.spatialAlgorithmBridge
+```
+
+以下示例会切换/重置环境并清空塔站，仅在已保存重要数据后运行。坐标为示意，未通过验证不会放置：
 
 ```js
 const env = window.spatialEnvironment;
@@ -211,75 +494,160 @@ await env.reset({
   rendering: { enabled: true },
   assets: { resetPlacedAssets: true }
 });
-const action = { type: 'PLACE_ASSET', assetType: 'signal-tower', position: { x: 12, z: 20 } };
+
+const action = {
+  type: 'PLACE_ASSET',
+  assetType: 'signal-tower',
+  position: { x: 12, z: 20 }
+};
 const check = env.validateAction(action);
 if (check.valid) console.log(await env.step(action));
+else console.log(check);
 console.log(env.observe(), env.getMetrics(), env.getGlobalGrid(32, 32));
 ```
 
-`reset()` 和 `step()` 是异步接口。支持 `PLACE_ASSET`、`REMOVE_ASSET`、`MOVE_ASSET`、`NO_OP`；非法动作不改变世界，但计一步并记录违规。`validateAction()` 只读预检；`evaluate()` 评价当前布局；`getHeightGrid()`、`getSemanticGrid()`、`getOccupancyGrid()`、`getGlobalGrid()`、`getLocalGrid()` 提供栅格观察。语义编码为草地 1、道路 2、水域 3、障碍 4、禁区 5，0 为未知。`getState()` 比对外的 `observe()` 更接近内部状态。详细方法见 [代码导读](CODEBASE_GUIDE.md#6-environment-api-怎么读)。
-
-| API | 何时使用 / 返回内容 |
+| API | 用途 |
 | --- | --- |
-| `reset(config)` | 开始新 episode；可指定地形、随机种子、目标塔数、最大步数/资产数及是否清空现有资产，返回初始 Observation。 |
-| `observe()` / `getState()` | 前者取算法可见的地形摘要、有效资产、Agent、指标与步数；后者取更完整的世界状态快照。 |
-| `validateAction(action)` | 提前检查放置/移动/删除等动作的合法性与约束结果，不改变世界。 |
-| `step(action)` | 执行动作并计一步；返回 Observation、reward、`terminated`（任务完成）/`truncated`（达到步数上限）和详细指标。 |
-| `evaluate()` / `getMetrics()` / `getEpisodeHistory()` | 评价当前正式资产布局、读取原始指标和本 episode 的步骤记录。 |
-| `getAvailableActions()` / `getAvailableTerrains()` / `switchTerrain(id)` | 查询可用动作/地形，或异步切换地形。切换期间应等待完成后再调用动作。 |
-| `validateCandidate()` / `evaluatePlacementSet()` | 不放置真实塔，静态验证一个候选点或整组布局，适合算法搜索。 |
-| `getGlobalGrid()` / `getLocalGrid()` | 获取全局或指定位置附近的高度、语义和占用矩阵；也可单取三种矩阵。 |
-| `applySolution(assets)` | 对已选方案重新验证后写入真实世界；会替换当前塔站。 |
+| `reset(config)` | 初始化 episode，配置地形、种子、目标、步数和资产重置。 |
+| `observe()` / `getState()` | 算法观察 / 更完整的内部状态快照。 |
+| `validateAction(action)` / `step(action)` | 只读预检 / 执行动作并返回 reward 与终止状态。 |
+| `evaluate()` / `getMetrics()` / `getEpisodeHistory()` | 当前布局评价、指标和步骤历史。 |
+| `getAvailableActions()` / `getAvailableTerrains()` / `switchTerrain(id)` | 查询动作、地图和切换地图。 |
+| `getHeightGrid()` / `getSemanticGrid()` / `getOccupancyGrid()` | 高度、语义、资产占用栅格。 |
+| `getGlobalGrid()` / `getLocalGrid()` | 全局或局部组合栅格观察。 |
+| `validateCandidate()` / `evaluatePlacementSet()` | 不创建真实塔的候选验证与整组布局评价。 |
+| `applySolution(assets)` | 重新验证并应用正式方案，替换当前塔站。 |
 
-算法约束包含地形边界、有效地面支撑、水域、Restrict、最大坡度（默认 12°）、碰撞及塔间最小距离（默认 5 m）。`PLACE_ASSET` 需要资产类型和 X/Z 坐标；`REMOVE_ASSET` 需要资产 ID；`MOVE_ASSET` 需要已有 ID 和新坐标；`NO_OP` 可用 `endEpisode: true` 主动结束。分数和 reward 是不同概念：合法动作的 reward 是本步相对上步的分数变化，不合法动作获得负奖励且仍占用一步。
+支持 `PLACE_ASSET`、`REMOVE_ASSET`、`MOVE_ASSET`、`NO_OP`。非法动作不改变世界，但计一步并记录违规；合法动作 reward 是本步相对上步的 score 差。返回的 `terminated` 表示任务终止，`truncated` 表示步数上限截断。`reset`、`step`、切换地形等异步操作需等待完成。
 
-本地桥接支持 `RESET`、`OBSERVE`、`STEP`、`EVALUATE`、`SWITCH_TERRAIN`、`GET_METRICS` 消息，但它只在同一浏览器进程内分发；目前没有可让 Python 直接连接的 WebSocket 服务或纯 Node headless 入口。
+语义栅格编码：未知 0、草地 1、道路 2、水域 3、障碍 4、禁区 5。没有有效地面支撑的高度可能为 `NaN`，算法不能只检查数值范围而忽略有效覆盖。
+
+### 如何增加优化算法
+
+1. 参考 `src/algorithm/baseline/RandomSearchBaseline.ts`，实现 `OptimizationAlgorithm` 的 `name`、`version` 和异步 `run(environment, config, signal)`。
+2. 返回 score、metrics、solution 和 history，支持取消信号；复用环境的候选验证和评价，不模拟 UI 点击。
+3. 调用 `ExperimentRunner.register(algorithm)` 注册，再以对应 `config.algorithm` 运行。
+4. 若要在页面中切换算法，还需修改 `src/ui/ExperimentPanel.ts`：当前下拉框禁用，运行配置固定为 `Random Search`。注册接口本身不会自动生成新菜单项。
+
+接口定义位于 `src/algorithm/experiment/ExperimentResult.ts`。道路 Dijkstra、胶囊寻路与布局优化是不同扩展点，不要把 `Traversal Profile` 当成优化算法选择器。
+
+### 消息桥
+
+本地桥接支持 `RESET`、`OBSERVE`、`STEP`、`EVALUATE`、`SWITCH_TERRAIN`、`GET_METRICS`：
 
 ```js
 const reply = await window.spatialAlgorithmBridge.handle({
   type: 'OBSERVE', requestId: 'demo-1'
 });
-console.log(reply); // OBSERVE_RESULT；失败时返回带 code/message 的 ERROR
+console.log(reply);
 ```
 
-## 8. GeoTIFF / DEM 转换
+目前仅在同一浏览器进程内分发消息，不是 HTTP API 或 WebSocket 服务。接 Python 或远程算法需另外实现传输层。
 
-Python GIS 工具可检查 GeoTIFF、选择米制投影、等比例重采样、生成 `terrain.json`/`terrain.glb`/`metadata.json`、校验并更新 manifest，还可以把 OSM/GeoJSON 建筑和道路转换到同一个地形局部坐标。快速流程如下；完整参数和注意事项请看 [工具说明](tools/gis-converter/README.md)、[中文实操](tools/GIS_GeoTIFF_地形转换与平台接入步骤.md) 与 [V0.5 交付说明](V05_OSM_BUILDINGS_ROADS.md)。
+## 14. 目录职责与代码阅读顺序
+
+### 目录职责
+
+| 路径 | 主要职责 |
+| --- | --- |
+| `src/main.ts` | 启动当前多地形应用，装配 Environment、实验面板和全局开发接口。 |
+| `src/core/` | 仿真生命周期与总装配，当前核心为 `MultiTerrainSimulation.ts`。 |
+| `src/terrain/` | 地形清单、GLB 导入采样、TerrainData、高度编辑、会话状态和出生点。 |
+| `src/render/` | Three.js 场景、相机、光照、水面与调试覆盖渲染。 |
+| `src/physics/` | Rapier 地形、建筑、资产碰撞与角色控制。 |
+| `src/agent/` | 胶囊实体和沿路径运动。 |
+| `src/navigation/` | 胶囊使用的 Recast / 网格导航、路径校验与调试。 |
+| `src/semantic/` | 地表类型、禁区、障碍和手工语义覆盖。 |
+| `src/assets/` | 资产定义、模型创建、部署校验和按坐标放置。 |
+| `src/gis/` | 建筑道路数据类型、地形高度服务、建筑和道路图层。 |
+| `src/spatial/` | 坐标转换、普通/物理拾取、空间点验证与选择管理。 |
+| `src/roads/` | 道路图节点/边、路口、通行配置、吸附、Dijkstra 和调试层。 |
+| `src/analysis/` | 建筑通视、点对道路可达图、矩阵与导出。 |
+| `src/algorithm/` | Environment、动作、状态、约束、目标、奖励、指标、随机搜索和实验执行。 |
+| `src/evaluation/`、`src/tasks/` | 布局覆盖评价与任务定义。 |
+| `src/bridge/` | 算法消息协议与本地桥接。 |
+| `src/ui/`、`src/styles/` | 四个功能面板、浮动窗口、禁区编辑交互和样式。 |
+| `src/config/`、`src/types/` | 基础常量与公共类型。 |
+| `src/map/` | 早期地图加载/适配代码；当前新增多地形逻辑主要看 `terrain/`。 |
+| `public/assets/maps/terrain-demo/` | manifest、原始模型、地形/语义/资产数据与生成 GIS 包。 |
+| `tools/gis-converter/` | Python 转换器、输入数据目录、转换与校验测试。 |
+| `tools/runtime-smoke.mjs` | 运行时辅助检查脚本；不是前端启动入口。 |
+| `tests/` | TypeScript 地形、坐标和空间分析回归测试。 |
+| `scripts/` | 当前预留目录，不是核心运行入口。 |
+| `dist/`、`node_modules/` | 构建产物、依赖；不要在这里修改业务实现。 |
+
+`public/` 下的文件由 Vite 作为静态资源提供，manifest 内的资源路径相对于该地图目录解析。旧版 `Simulation.ts`、`ControlPanel.ts` 等仍在仓库中，不能仅凭文件名判断它们就是当前页面入口。
+
+### 建议阅读顺序
+
+1. `src/main.ts` → `src/core/MultiTerrainSimulation.ts`：先理解启动、模式切换和各子系统的关系。
+2. `TerrainTypes.ts` → `TerrainManager.ts` → `TerrainSampler.ts`：理解数据真值、加载和切换，再看渲染与碰撞如何使用这些数据。
+3. 若研究角色移动，看 `navigation/Pathfinder.ts` 与 `agent/AgentController.ts`；若研究道路分析，看 `roads/RoadNetworkBuilder.ts`、`RoadSnapper.ts`、`RoadPathfinder.ts`。
+4. 若研究点选与通视，看 `PhysicalPointPicker.ts` → `SpatialPointValidator.ts` → `VisibilityAnalyzer.ts`。
+5. 若研究优化算法，看 `algorithm/Environment.ts` → `evaluation/SpatialEvaluator.ts` → `ExperimentRunner.ts` → `RandomSearchBaseline.ts`。
+6. 最后看相应 UI 如何调用这些接口，不从按钮事件反推全部算法逻辑。
+
+进一步的逐模块讲解见 [CODEBASE_GUIDE.md](CODEBASE_GUIDE.md)。其中较早的空间分析描述应结合当前 V0.6-B2 文档阅读。
+
+## 15. 测试与验收
+
+### 自动测试
+
+项目根目录执行：
+
+```powershell
+npm run test:terrain
+npm run build
+```
+
+`test:terrain` 会打包并运行以下三组测试，名称虽然保留 terrain，但覆盖范围已经扩展：
+
+- `tests/terrain-regression.test.ts`：地形、水体、覆盖、禁区、路径、碰撞与胶囊相关回归。
+- `tests/coordinate-regression.test.ts`：坐标转换与按坐标部署。
+- `tests/spatial-analysis-regression.test.ts`：物理选点、遮挡、道路图、吸附、最短路、矩阵与运行时切换回归。
+
+GIS 工具测试从项目根目录进入工具目录后执行：
 
 ```powershell
 cd tools/gis-converter
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python -m gis_converter.cli inspect --input input/map.tif
-python -m gis_converter.cli convert --input input/map.tif --output ../../public/assets/maps/terrain-demo/generated/my-dem --terrain-id my-dem --resolution 128 --target-crs auto
-python -m gis_converter.cli validate --terrain ../../public/assets/maps/terrain-demo/generated/my-dem
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
-验证通过后再用 `--update-manifest` 注册；覆盖同名输出需另加 `--overwrite`，旧文件会备份。刷新平台后在地形列表选择新 ID。`terrain.json` 是运行时高度真值；`sampleCoverage` 保留 NoData/未覆盖位置，不应把仅为保持网格有限而填充高度的区域当成可部署地面。
+部分真实 DEM 测试取决于本地输入数据是否存在，缺少时可能跳过；通过合成数据测试不等于已验收所有真实地图。
 
-### 导入 OSM 建筑和道路
+开发时可用 `/?algorithmSelfTest=1` 触发浏览器内算法环境自检。它会调用环境动作，应在不需要保留当前布局的测试会话中使用。
 
-V0.5 的 `vector-inspect` 用来查看 GeoJSON 的 CRS、几何类型、数量、范围、字段和无效要素；`vector-convert` 读取目标地形的 `metadata.json` 与 `terrain.json`，生成结构化 `buildings.local.json` / `roads.local.json`。不要修改原始 GeoJSON，也不要为矢量数据重新计算 origin。以 Aspen 为例：
+### 手动验收建议
 
-```powershell
-cd tools/gis-converter
-.\.venv\Scripts\python.exe -m gis_converter.cli vector-inspect --input input/aspen/raw/aspen_buildings.geojson
-.\.venv\Scripts\python.exe -m gis_converter.cli vector-convert --input input/aspen/raw/aspen_buildings.geojson --terrain-metadata ../../public/assets/maps/terrain-demo/generated/aspen/metadata.json --terrain-data ../../public/assets/maps/terrain-demo/generated/aspen/terrain.json --output ../../public/assets/maps/terrain-demo/generated/aspen/processed/buildings.local.json --type buildings
-.\.venv\Scripts\python.exe -m gis_converter.cli vector-convert --input input/aspen/raw/aspen_roads.geojson --terrain-metadata ../../public/assets/maps/terrain-demo/generated/aspen/metadata.json --terrain-data ../../public/assets/maps/terrain-demo/generated/aspen/terrain.json --output ../../public/assets/maps/terrain-demo/generated/aspen/processed/roads.local.json --type roads
-```
+1. 默认地图与各可用地图能切换，失败时有明确提示。
+2. 胶囊能移动、重新部署，尺寸与碰撞一致；Restrict 中间路段不会被胶囊路径直接穿过。
+3. 地形编辑后可见高度、碰撞与部署判断同步。
+4. 坐标读数与 GIS 元数据一致，按坐标预览和部署位置一致。
+5. 点击建筑不能创建空间分析点；切换地图后仍能正常选点。
+6. 用建筑两侧的点验证通视；用相连和断连道路验证可达矩阵及道路路径。
+7. 拖动面板不带动相机；导出的 JSON/CSV 有当前地图与结果信息。
 
-在 manifest 对应地形项中设置 `buildings` 和 `roads` 相对路径，刷新并选择该地形。加载顺序是地形数据 → 矢量 JSON → 语义注册 → 建筑碰撞 → 导航；文件缺失或结构错误会中止这次地形切换，而不是隐藏错误。Aspen 已配置好，可直接选择 `aspen_dem` 检查道路、建筑与地形的对齐。
+本文提供验证方法，不代表每次修改 README 都重新完成了浏览器和真实数据验收；历史版本文档中的测试数量也不应作为本次运行结果。
 
-## 9. 保存边界与常见问题
+## 16. 已知限制与相关文档
 
-- 所有 `Export` 都是**浏览器下载**，不修改仓库中的 `public/` 文件、manifest 或本地数据库。页面刷新后，会话内编辑不会自动恢复。
-- 地形列表没有新增项：检查 manifest JSON 格式、唯一 ID、相对路径，并刷新页面。
-- 地形加载失败或没有出生点：检查文件路径、DEM `sampleCoverage`、单位/比例、坡度和语义禁区。已有 `data` 却缺失/损坏时会明确失败，不会偷偷改用 GLB 重采样。
-- 点击后不能导航或部署：先确认不在编辑模式，再检查地形支撑、水域、禁区和坡度；可开启 `Semantic`/`NavMesh` 辅助判断，但导航格不是源模型的精确三角面。
-- 当前地形是 **2.5D heightfield**，一个 X/Z 位置只有一个高度，不能完整表达洞穴、叠层道路或建筑内部。大型 GLB 采样仍在主线程，首次加载可能短暂卡顿；Recast 失败可回退到 A*，但不保证任意端点都可达。
-- 视觉使用白色背景和低饱和马卡龙色系；渲染表现不替代地形、覆盖掩码、语义、导航和碰撞的实际判定。
+- **坡道路段误判不可达仍待针对性修复。** 当前道路端点合并采用厘米级坐标量化，没有通用的近邻端点补连；共线重叠交点与桥梁/地面入口等情况可能无法按预期连接。先前截图对应路段的确切原因尚未定位，不能直接归因于坡度，也不能声称已解决。
+- **道路规则尚不完整。** 未强制单行道，通行配置主要按道路类型过滤；道路边尚未完整结合手工禁区、动态障碍或所有真实通行限制。可达性结果是当前数据与规则下的计算结果。
+- **地形仍是 2.5D。** 一个 X/Z 对应一个地面高度，不能完整表达洞穴、叠层道路、悬空平台或建筑内部通行；桥隧属性不等于真实多层几何。
+- **通视仅考虑建筑。** 山体、树木、角色和资产不参与当前通视遮挡。
+- **优化模型简化。** 只有随机搜索基线与几何覆盖模型；没有真实无线传播、多算法 UI 或现成强化学习训练服务。
+- **保存仅限会话与手动导出。** 没有完整工程存档、一键恢复、数据库或多人协作持久化。
+- **GIS 范围有限。** 目前处理局部区域 DEM 与建筑/道路 GeoJSON，不包含 OSM 水系、卫星影像或 3D Tiles。
+- **性能仍有改进空间。** 大型 GLB 采样在主线程；Three.js、Rapier 和 Recast 带来较大构建体积，首次加载可能卡顿或出现 chunk-size 提示。
 
-## 10. 从哪里开始读代码
+相关文档：
 
-从 `src/main.ts` 看启动，再看 `src/core/MultiTerrainSimulation.ts` 如何装配地形、渲染、物理、导航、Agent 与 UI；地形主数据结构见 `src/terrain/TerrainTypes.ts`，算法接口见 `src/algorithm/Environment.ts`，实验执行见 `src/algorithm/experiment/ExperimentRunner.ts`。逐目录、逐文件职责与数据流见 [CODEBASE_GUIDE.md](CODEBASE_GUIDE.md)。
+| 文档 | 阅读用途 |
+| --- | --- |
+| [代码与目录导读](CODEBASE_GUIDE.md) | 更详细的数据流和算法环境说明；部分旧空间分析内容需以 B2 为准。 |
+| [V0.6-B2 物理空间分析](V06B2_PHYSICAL_SPATIAL_ANALYSIS.md) | 当前物理点选、道路拓扑、Dijkstra 与输出约定。 |
+| [V0.6-A 坐标与资产放置](V06A_COORDINATE_ASSET_PLACEMENT.md) | 坐标服务、元数据和精确部署。 |
+| [V0.5 建筑与道路](V05_OSM_BUILDINGS_ROADS.md) | OSM 数据结构与图层接入。 |
+| [GIS 转换工具说明](tools/gis-converter/README.md) | CLI 参数、验证、批处理、备份与矢量转换。 |
+| [GeoTIFF 中文接入步骤](tools/GIS_GeoTIFF_地形转换与平台接入步骤.md) | 转换真实 DEM 的操作示例。 |
+| [V0.6-B 历史说明](V06B_VISIBILITY_REACHABILITY_GRAPH.md) | 了解早期方案；其 NavMesh 可达图方案已被 B2 道路图替代。 |
